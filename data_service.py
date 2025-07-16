@@ -207,44 +207,46 @@ class DataService:
         if search:
             # Экранируем кавычки для безопасности
             search_escaped = search.replace("'", "''")
-            where_conditions.append(f"(name ILIKE '%{search_escaped}%' OR title ILIKE '%{search_escaped}%' OR description ILIKE '%{search_escaped}%')")
+            where_conditions.append(f"(a.name ILIKE '%{search_escaped}%' OR a.title ILIKE '%{search_escaped}%' OR a.description ILIKE '%{search_escaped}%')")
             
         if status_variance is not None:
-            where_conditions.append(f"a_status_variance = {status_variance}")
+            where_conditions.append(f"a.a_status_variance = {status_variance}")
             
         if event is not None:
-            where_conditions.append(f"a_event = {event}")
+            where_conditions.append(f"a.a_event = {event}")
             
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
         # Общее количество записей
         count_query = f"""
             SELECT COUNT(*) 
-            FROM sxattr_source 
+            FROM sxattr_source a
+            LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
             WHERE {where_clause}
         """
         
         # Основной запрос с пагинацией
         offset = (page - 1) * per_page
         main_query = f"""
-            SELECT ouid, name, description, title, ouiddatatype, pkey, defvalue,
-                   map, visible, inlist, infiltr, length, istitle, icon, num,
-                   informs, agrp, viewtype, objquery, read_only, calculated,
-                   ctrl_width, near_label, height, ref_class, ref_attr, isordered,
-                   select_sql, extendedfilter, samerow, isrepl, iscrypt,
-                   addlinksql, dellinksql, search_mode, search_root, mandatory,
-                   a_cascade, a_isguid, a_istimestamp, isloading, isservercrypt,
-                   a_hierarchy, a_autoinc, a_class_descr, a_aliases, a_indexed,
-                   a_ext_list, a_cascaderep, a_viewlinkmn, a_unique, a_fornullval,
-                   a_isvirtual, a_sort, a_sign, a_hidegb, a_hidecb, a_hidedelb,
-                   a_hideedtb, isvaleuutitle, a_history, a_symboliclinkview,
-                   a_mask, a_isdiffbranch, a_disabledublicate, a_isactualize,
-                   columnfilter, a_objcrit, systemclass, guid, ts, a_issystem,
-                   cr_owner, a_createdate, a_editor, a_link_target, a_log,
-                   a_event, a_status_variance, ouidsxclass
-            FROM sxattr_source 
+            SELECT a.ouid, a.name, a.description, a.title, a.ouiddatatype, a.pkey, a.defvalue,
+                   a.map, a.visible, a.inlist, a.infiltr, a.length, a.istitle, a.icon, a.num,
+                   a.informs, a.agrp, a.viewtype, a.objquery, a.read_only, a.calculated,
+                   a.ctrl_width, a.near_label, a.height, a.ref_class, a.ref_attr, a.isordered,
+                   a.select_sql, a.extendedfilter, a.samerow, a.isrepl, a.iscrypt,
+                   a.addlinksql, a.dellinksql, a.search_mode, a.search_root, a.mandatory,
+                   a.a_cascade, a.a_isguid, a.a_istimestamp, a.isloading, a.isservercrypt,
+                   a.a_hierarchy, a.a_autoinc, a.a_class_descr, a.a_aliases, a.a_indexed,
+                   a.a_ext_list, a.a_cascaderep, a.a_viewlinkmn, a.a_unique, a.a_fornullval,
+                   a.a_isvirtual, a.a_sort, a.a_sign, a.a_hidegb, a.a_hidecb, a.a_hidedelb,
+                   a.a_hideedtb, a.isvaleuutitle, a.a_history, a.a_symboliclinkview,
+                   a.a_mask, a.a_isdiffbranch, a.a_disabledublicate, a.a_isactualize,
+                   a.columnfilter, a.a_objcrit, a.systemclass, a.guid, a.ts, a.a_issystem,
+                   a.cr_owner, a.a_createdate, a.a_editor, a.a_link_target, a.a_log,
+                   a.a_event, a.a_status_variance, a.ouidsxclass, d.description as datatype_name
+            FROM sxattr_source a
+            LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
             WHERE {where_clause}
-            ORDER BY title, name
+            ORDER BY a.title, a.name
             LIMIT {per_page} OFFSET {offset}
         """
         
@@ -342,6 +344,7 @@ class DataService:
                     'a_event': row[77],
                     'a_status_variance': row[78],
                     'ouidsxclass': row[79],
+                    'datatype_name': row[80],
                     'admin_url': self._build_admin_url(row[0], 'SXAttr', base_url)
                 })
             
@@ -408,39 +411,40 @@ class DataService:
         """
         
         # Атрибуты
-        attrs_where_conditions = [f"ouidsxclass = {class_ouid}"]
+        attrs_where_conditions = [f"a.ouidsxclass = {class_ouid}"]
         
         if search:
             search_escaped = search.replace("'", "''")
-            attrs_where_conditions.append(f"(name ILIKE '%{search_escaped}%' OR title ILIKE '%{search_escaped}%' OR description ILIKE '%{search_escaped}%')")
+            attrs_where_conditions.append(f"(a.name ILIKE '%{search_escaped}%' OR a.title ILIKE '%{search_escaped}%' OR a.description ILIKE '%{search_escaped}%')")
             
         if status_variance is not None:
-            attrs_where_conditions.append(f"a_status_variance = {status_variance}")
+            attrs_where_conditions.append(f"a.a_status_variance = {status_variance}")
             
         if event is not None:
-            attrs_where_conditions.append(f"a_event = {event}")
+            attrs_where_conditions.append(f"a.a_event = {event}")
             
         attrs_where_clause = " AND ".join(attrs_where_conditions)
         
         attrs_query = f"""
-            SELECT ouid, name, description, title, ouiddatatype, pkey, defvalue,
-                   map, visible, inlist, infiltr, length, istitle, icon, num,
-                   informs, agrp, viewtype, objquery, read_only, calculated,
-                   ctrl_width, near_label, height, ref_class, ref_attr, isordered,
-                   select_sql, extendedfilter, samerow, isrepl, iscrypt,
-                   addlinksql, dellinksql, search_mode, search_root, mandatory,
-                   a_cascade, a_isguid, a_istimestamp, isloading, isservercrypt,
-                   a_hierarchy, a_autoinc, a_class_descr, a_aliases, a_indexed,
-                   a_ext_list, a_cascaderep, a_viewlinkmn, a_unique, a_fornullval,
-                   a_isvirtual, a_sort, a_sign, a_hidegb, a_hidecb, a_hidedelb,
-                   a_hideedtb, isvaleuutitle, a_history, a_symboliclinkview,
-                   a_mask, a_isdiffbranch, a_disabledublicate, a_isactualize,
-                   columnfilter, a_objcrit, systemclass, guid, ts, a_issystem,
-                   cr_owner, a_createdate, a_editor, a_link_target, a_log,
-                   a_event, a_status_variance
-            FROM sxattr_source 
+            SELECT a.ouid, a.name, a.description, a.title, a.ouiddatatype, a.pkey, a.defvalue,
+                   a.map, a.visible, a.inlist, a.infiltr, a.length, a.istitle, a.icon, a.num,
+                   a.informs, a.agrp, a.viewtype, a.objquery, a.read_only, a.calculated,
+                   a.ctrl_width, a.near_label, a.height, a.ref_class, a.ref_attr, a.isordered,
+                   a.select_sql, a.extendedfilter, a.samerow, a.isrepl, a.iscrypt,
+                   a.addlinksql, a.dellinksql, a.search_mode, a.search_root, a.mandatory,
+                   a.a_cascade, a.a_isguid, a.a_istimestamp, a.isloading, a.isservercrypt,
+                   a.a_hierarchy, a.a_autoinc, a.a_class_descr, a.a_aliases, a.a_indexed,
+                   a.a_ext_list, a.a_cascaderep, a.a_viewlinkmn, a.a_unique, a.a_fornullval,
+                   a.a_isvirtual, a.a_sort, a.a_sign, a.a_hidegb, a.a_hidecb, a.a_hidedelb,
+                   a.a_hideedtb, a.isvaleuutitle, a.a_history, a.a_symboliclinkview,
+                   a.a_mask, a.a_isdiffbranch, a.a_disabledublicate, a.a_isactualize,
+                   a.columnfilter, a.a_objcrit, a.systemclass, a.guid, a.ts, a.a_issystem,
+                   a.cr_owner, a.a_createdate, a.a_editor, a.a_link_target, a.a_log,
+                   a.a_event, a.a_status_variance, d.description as datatype_name
+            FROM sxattr_source a
+            LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
             WHERE {attrs_where_clause}
-            ORDER BY num, title
+            ORDER BY a.num, a.title
         """
         
         try:
@@ -605,21 +609,28 @@ class DataService:
                     'a_log': row[76],
                     'a_event': row[77],
                     'a_status_variance': row[78],
+                    'datatype_name': row[79],
                     'admin_url': self._build_admin_url(row[0], 'SXAttr', base_url)
                 })
             
             # Получаем парсинг различий если есть
             differences = self.get_class_differences(class_ouid)
+            group_differences = self.get_group_differences(class_ouid)
+            attribute_differences = self.get_attribute_differences(class_ouid)
             
             return {
                 'class': class_info,
                 'groups': groups,
                 'attributes': attributes,
                 'differences': differences,
+                'group_differences': group_differences,
+                'attribute_differences': attribute_differences,
                 'statistics': {
                     'groups_count': len(groups),
                     'attributes_count': len(attributes),
-                    'differences_count': len(differences)
+                    'differences_count': len(differences),
+                    'group_differences_count': len(group_differences),
+                    'attribute_differences_count': len(attribute_differences)
                 },
                 'filters_applied': {
                     'search': search,
@@ -796,6 +807,277 @@ class DataService:
         finally:
             self.db_manager.disconnect()
     
+    def get_group_differences(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None) -> List[Dict[str, Any]]:
+        """Парсинг различий для групп атрибутов (использует SQL из отчёт по группам.sql)"""
+        
+        # Построение WHERE условий для фильтрации групп
+        where_conditions = [f"s.cls = {class_ouid}"]
+        
+        if search:
+            search_escaped = search.replace("'", "''")
+            where_conditions.append(f"(s.name ILIKE '%{search_escaped}%' OR s.title ILIKE '%{search_escaped}%')")
+            
+        if status_variance is not None:
+            where_conditions.append(f"s.a_status_variance = {status_variance}")
+        else:
+            where_conditions.append("s.A_STATUS_VARIANCE = 2")
+            
+        if event is not None:
+            where_conditions.append(f"s.a_event = {event}")
+        else:
+            where_conditions.append("s.A_EVENT = 4")
+        
+        where_clause = " AND ".join(where_conditions)
+        
+        differences_query = f"""
+            -- Анализ различий между группами атрибутов источника и назначения в системе SiTex
+            WITH log_lines AS (
+                SELECT
+                    s.ouid as attr_grp_ouid,
+                    s.name as attr_grp_name,
+                    s.title as attr_grp_description,
+                    s.a_log,
+                    unnest(string_to_array(s.a_log, E'\\n')) as log_line,
+                    generate_series(1, array_length(string_to_array(s.a_log, E'\\n'), 1)) as line_number
+                FROM SXATTR_GRP_SOURCE s
+                WHERE {where_clause}
+            ),
+            source_lines AS (
+                SELECT
+                    attr_grp_ouid,
+                    attr_grp_name,
+                    attr_grp_description,
+                    line_number,
+                    log_line,
+                    ROW_NUMBER() OVER (PARTITION BY attr_grp_name ORDER BY line_number) as source_seq
+                FROM log_lines
+                WHERE log_line ~ 'source[[:space:]]*='
+            ),
+            attribute_names AS (
+                SELECT
+                    sl.attr_grp_ouid,
+                    sl.attr_grp_name,
+                    sl.attr_grp_description,
+                    sl.line_number as source_line_number,
+                    sl.source_seq,
+                    COALESCE(
+                        (SELECT trim(ll.log_line)
+                         FROM log_lines ll
+                         WHERE ll.attr_grp_name = sl.attr_grp_name
+                           AND ll.line_number = sl.line_number - 1
+                           AND trim(ll.log_line) != ''
+                         LIMIT 1),
+                        'unknown_attribute_' || sl.source_seq
+                    ) as attribute_name
+                FROM source_lines sl
+            ),
+            source_target_blocks AS (
+                SELECT
+                    an.attr_grp_ouid,
+                    an.attr_grp_name,
+                    an.attr_grp_description,
+                    an.attribute_name,
+                    an.source_seq,
+                    an.source_line_number,
+                    LEAD(an.source_line_number, 1, 999999) OVER (
+                        PARTITION BY an.attr_grp_name
+                        ORDER BY an.source_line_number
+                    ) as next_source_line_number
+                FROM attribute_names an
+            ),
+            extracted_values AS (
+                SELECT
+                    stb.attr_grp_ouid,
+                    stb.attr_grp_name,
+                    stb.attr_grp_description,
+                    stb.attribute_name,
+                    string_agg(
+                        CASE
+                            WHEN ll.log_line ~ 'source[[:space:]]*=' THEN
+                                trim(regexp_replace(ll.log_line, '^.*source[[:space:]]*=[[:space:]]*', ''))
+                            WHEN ll.log_line ~ 'target[[:space:]]*=' THEN NULL
+                            ELSE trim(ll.log_line)
+                        END,
+                        ' ' ORDER BY ll.line_number
+                    ) FILTER (WHERE ll.line_number >= stb.source_line_number
+                                AND ll.line_number < COALESCE(
+                                    (SELECT MIN(ll2.line_number)
+                                     FROM log_lines ll2
+                                     WHERE ll2.attr_grp_name = stb.attr_grp_name
+                                       AND ll2.line_number > stb.source_line_number
+                                       AND ll2.log_line ~ 'target[[:space:]]*='),
+                                    stb.next_source_line_number
+                                )) as source_value,
+                    string_agg(
+                        CASE
+                            WHEN ll.log_line ~ 'target[[:space:]]*=' THEN
+                                trim(regexp_replace(ll.log_line, '^.*target[[:space:]]*=[[:space:]]*', ''))
+                            WHEN ll.log_line ~ 'source[[:space:]]*=' THEN NULL
+                            WHEN ll.log_line !~ '^[[:space:]]' AND trim(ll.log_line) != '' THEN NULL
+                            ELSE trim(ll.log_line)
+                        END,
+                        ' ' ORDER BY ll.line_number
+                    ) FILTER (WHERE ll.line_number > stb.source_line_number
+                                AND ll.line_number < stb.next_source_line_number
+                                AND ll.line_number >= COALESCE(
+                                    (SELECT MIN(ll2.line_number)
+                                     FROM log_lines ll2
+                                     WHERE ll2.attr_grp_name = stb.attr_grp_name
+                                       AND ll2.line_number > stb.source_line_number
+                                       AND ll2.log_line ~ 'target[[:space:]]*='),
+                                    stb.next_source_line_number
+                                )
+                                AND ll.line_number < COALESCE(
+                                    (SELECT MIN(ll3.line_number)
+                                     FROM log_lines ll3
+                                     WHERE ll3.attr_grp_name = stb.attr_grp_name
+                                       AND ll3.line_number > COALESCE(
+                                           (SELECT MIN(ll2.line_number)
+                                            FROM log_lines ll2
+                                            WHERE ll2.attr_grp_name = stb.attr_grp_name
+                                              AND ll2.line_number > stb.source_line_number
+                                              AND ll2.log_line ~ 'target[[:space:]]*='),
+                                           stb.next_source_line_number
+                                       )
+                                       AND ll3.log_line !~ '^[[:space:]]'
+                                       AND trim(ll3.log_line) != ''),
+                                    stb.next_source_line_number
+                                )) as target_value
+                FROM source_target_blocks stb
+                JOIN log_lines ll ON ll.attr_grp_name = stb.attr_grp_name
+                GROUP BY stb.attr_grp_ouid, stb.attr_grp_name, stb.attr_grp_description, stb.attribute_name, stb.source_seq,
+                         stb.source_line_number, stb.next_source_line_number
+            )
+            SELECT
+                attr_grp_ouid,
+                attr_grp_name,
+                attr_grp_description,
+                attribute_name,
+                COALESCE(trim(source_value), '') as source_value,
+                COALESCE(trim(target_value), '') as target_value
+            FROM extracted_values
+            WHERE attribute_name IS NOT NULL
+                AND attribute_name != ''
+                AND NOT attribute_name LIKE 'unknown_attribute_%'
+            ORDER BY attr_grp_name, attribute_name
+        """
+        
+        try:
+            if not self.db_manager.connect():
+                return []
+            
+            result = self.db_manager.execute_query(differences_query)
+            
+            differences = []
+            for row in result:
+                difference_type = self._get_difference_type(row[4], row[5])
+                differences.append({
+                    'attr_grp_ouid': row[0],
+                    'attr_grp_name': row[1],
+                    'attr_grp_description': row[2],
+                    'attribute_name': row[3],
+                    'source_value': row[4],
+                    'target_value': row[5],
+                    'difference_type': difference_type
+                })
+            
+            return differences
+            
+        except Exception as e:
+            print(f"Ошибка парсинга различий по группам: {e}")
+            return []
+        finally:
+            self.db_manager.disconnect()
+
+    def get_attribute_differences(self, class_ouid: int) -> List[Dict[str, Any]]:
+        """Парсинг различий для атрибутов (использует SQL из отчёт по атрибутам.sql)"""
+        
+        differences_query = f"""
+            -- Анализ различий между атрибутами источника и назначения в системе SiTex
+            WITH source_data AS (
+                SELECT
+                    s.ouid,
+                    s.name,
+                    s.description,
+                    s.a_log
+                FROM SXATTR_SOURCE s
+                WHERE s.A_STATUS_VARIANCE = 2
+                    AND s.A_EVENT = 0
+                    AND s.ouidsxclass = {class_ouid}
+            ),
+            attr_blocks AS (
+                SELECT
+                    s.ouid,
+                    s.name,
+                    s.description,
+                    trim(split_part(attr_block, E'\\n', 1)) as attribute_name,
+                    COALESCE(
+                        trim(regexp_replace(
+                            substring(attr_block from 'source[[:space:]]*=[[:space:]]*([^\\n]*(?:\\n[[:space:]]+[^\\n]*)*?)(?=\\n[[:space:]]*target[[:space:]]*=|\\n[^[:space:]]|$)'),
+                            '^[[:space:]]*', '', 'g'
+                        )),
+                        ''
+                    ) as source_value,
+                    COALESCE(
+                        trim(regexp_replace(
+                            substring(attr_block from 'target[[:space:]]*=[[:space:]]*([^\\n]*(?:\\n[[:space:]]+[^\\n]*)*?)(?=\\n[^[:space:]]|$)'),
+                            '^[[:space:]]*', '', 'g'
+                        )),
+                        ''
+                    ) as target_value
+                FROM source_data s
+                CROSS JOIN LATERAL (
+                    SELECT unnest(
+                        regexp_split_to_array(
+                            s.a_log,
+                            E'(?=\\n[^[:space:]\\n])'
+                        )
+                    ) AS attr_block
+                ) attr_blocks
+                WHERE attr_block ~ 'source[[:space:]]*='
+                    AND trim(split_part(attr_block, E'\\n', 1)) != ''
+                    AND length(trim(attr_block)) > 0
+            )
+            SELECT
+                ouid as attr_ouid,
+                name as attr_name,
+                description as attr_description,
+                attribute_name,
+                source_value,
+                target_value
+            FROM attr_blocks
+            WHERE attribute_name IS NOT NULL
+                AND attribute_name != ''
+            ORDER BY attr_name, attribute_name
+        """
+        
+        try:
+            if not self.db_manager.connect():
+                return []
+            
+            result = self.db_manager.execute_query(differences_query)
+            
+            differences = []
+            for row in result:
+                difference_type = self._get_difference_type(row[4], row[5])
+                differences.append({
+                    'attr_ouid': row[0],
+                    'attr_name': row[1],
+                    'attr_description': row[2],
+                    'attribute_name': row[3],
+                    'source_value': row[4],
+                    'target_value': row[5],
+                    'difference_type': difference_type
+                })
+            
+            return differences
+            
+        except Exception as e:
+            print(f"Ошибка парсинга различий по атрибутам: {e}")
+            return []
+        finally:
+            self.db_manager.disconnect()
+
     def get_statistics(self) -> Dict[str, Any]:
         """Получение общей статистики"""
         

@@ -115,7 +115,6 @@
                         <th>ID</th>
                         <th>Имя</th>
                         <th>Заголовок</th>
-                        <th>Описание</th>
                         <th>Класс</th>
                         <th>Номер</th>
                         <th>Тип</th>
@@ -137,16 +136,13 @@
                             {{ attr.title or '-' }}
                         </td>
                         <td>
-                            <small>{{ attr.description or '-' }}</small>
-                        </td>
-                        <td>
                             <code>{{ attr.ouidsxclass or '-' }}</code>
                         </td>
                         <td>
                             {{ attr.num or '-' }}
                         </td>
                         <td>
-                            <small>{{ attr.ouiddatatype or '-' }}</small>
+                            <small>{{ attr.datatype_name or attr.ouiddatatype or '-' }}</small>
                         </td>
                         <td>
                             {% if attr.a_createdate %}

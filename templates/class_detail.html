@@ -23,7 +23,9 @@
                 <ul class="list-unstyled">
                     <li><strong>Групп атрибутов:</strong> {{ data.statistics.groups_count }}</li>
                     <li><strong>Атрибутов:</strong> {{ data.statistics.attributes_count }}</li>
-                    <li><strong>Различий:</strong> {{ data.statistics.differences_count }}</li>
+                    <li><strong>Различий по классу:</strong> {{ data.statistics.differences_count }}</li>
+                    <li><strong>Различий по группам:</strong> {{ data.statistics.group_differences_count }}</li>
+                    <li><strong>Различий по атрибутам:</strong> {{ data.statistics.attribute_differences_count }}</li>
                     {% if data.filters_applied.search or data.filters_applied.status_variance is not none or data.filters_applied.event is not none %}
                     <li><small class="text-muted">С учётом фильтра</small></li>
                     {% endif %}
@@ -49,7 +51,17 @@
                     </a>
                     {% if data.differences %}
                     <a href="#differences" class="btn btn-outline-danger btn-sm">
-                        <i class="bi bi-exclamation-triangle"></i> Различия
+                        <i class="bi bi-exclamation-triangle"></i> Различия по классу
+                    </a>
+                    {% endif %}
+                    {% if data.group_differences %}
+                    <a href="#group-differences" class="btn btn-outline-danger btn-sm">
+                        <i class="bi bi-exclamation-triangle"></i> Различия по группам
+                    </a>
+                    {% endif %}
+                    {% if data.attribute_differences %}
+                    <a href="#attribute-differences" class="btn btn-outline-danger btn-sm">
+                        <i class="bi bi-exclamation-triangle"></i> Различия по атрибутам
                     </a>
                     {% endif %}
                 </div>
@@ -349,7 +361,6 @@
                                     <th>OUID</th>
                                     <th>Имя</th>
                                     <th>Заголовок</th>
-                                    <th>Описание</th>
                                     <th>Тип данных</th>
                                     <th>Видимый</th>
                                     <th>Обязательный</th>
@@ -363,16 +374,7 @@
                                     <td><code>{{ attr.ouid }}</code></td>
                                     <td><span class="field-value">{{ attr.name or 'Не указано' }}</span></td>
                                     <td><span class="field-value">{{ attr.title or 'Не указано' }}</span></td>
-                                    <td>
-                                        <span class="text-muted">
-                                            {% if attr.description %}
-                                                {{ attr.description[:100] }}{% if attr.description|length > 100 %}...{% endif %}
-                                            {% else %}
-                                                Не указано
-                                            {% endif %}
-                                        </span>
-                                    </td>
-                                    <td><span class="badge bg-secondary">{{ attr.ouiddatatype or 'Не указано' }}</span></td>
+                                    <td><span class="badge bg-secondary">{{ attr.datatype_name or attr.ouiddatatype or 'Не указано' }}</span></td>
                                     <td>
                                         {% if attr.visible %}
                                             <span class="badge bg-success">Да</span>
@@ -414,11 +416,11 @@
             </div>
         </div>
         
-        <!-- Различия -->
+        <!-- Различия по классу -->
         {% if data.differences %}
         <div id="differences" class="card mb-4">
             <div class="card-header">
-                <h5><i class="bi bi-exclamation-triangle"></i> Различия ({{ data.differences|length }})</h5>
+                <h5><i class="bi bi-exclamation-triangle"></i> Различия по классу ({{ data.differences|length }})</h5>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -434,6 +436,106 @@
                         <tbody>
                             {% for diff in data.differences %}
                             <tr class="{% if diff.difference_type == 'Добавлено в target' %}difference-added{% elif diff.difference_type == 'Удалено из target' %}difference-removed{% else %}difference-modified{% endif %}">
+                                <td><strong>{{ diff.attribute_name }}</strong></td>
+                                <td>
+                                    <div class="difference-text" title="{{ diff.source_value }}">
+                                        {{ diff.source_value or 'Пусто' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="difference-text" title="{{ diff.target_value }}">
+                                        {{ diff.target_value or 'Пусто' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge {% if diff.difference_type == 'Добавлено в target' %}bg-success{% elif diff.difference_type == 'Удалено из target' %}bg-danger{% else %}bg-warning{% endif %}">
+                                        {{ diff.difference_type }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Различия по группам -->
+        {% if data.group_differences %}
+        <div id="group-differences" class="card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-exclamation-triangle"></i> Различия по группам ({{ data.group_differences|length }})</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Группа</th>
+                                <th>Атрибут</th>
+                                <th>Source</th>
+                                <th>Target</th>
+                                <th>Тип различия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for diff in data.group_differences %}
+                            <tr class="{% if diff.difference_type == 'Добавлено в target' %}difference-added{% elif diff.difference_type == 'Удалено из target' %}difference-removed{% else %}difference-modified{% endif %}">
+                                <td>
+                                    <strong>{{ diff.attr_grp_name }}</strong>
+                                    <br><small class="text-muted">{{ diff.attr_grp_description or '' }}</small>
+                                </td>
+                                <td><strong>{{ diff.attribute_name }}</strong></td>
+                                <td>
+                                    <div class="difference-text" title="{{ diff.source_value }}">
+                                        {{ diff.source_value or 'Пусто' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="difference-text" title="{{ diff.target_value }}">
+                                        {{ diff.target_value or 'Пусто' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge {% if diff.difference_type == 'Добавлено в target' %}bg-success{% elif diff.difference_type == 'Удалено из target' %}bg-danger{% else %}bg-warning{% endif %}">
+                                        {{ diff.difference_type }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Различия по атрибутам -->
+        {% if data.attribute_differences %}
+        <div id="attribute-differences" class="card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-exclamation-triangle"></i> Различия по атрибутам ({{ data.attribute_differences|length }})</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Атрибут</th>
+                                <th>Свойство</th>
+                                <th>Source</th>
+                                <th>Target</th>
+                                <th>Тип различия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for diff in data.attribute_differences %}
+                            <tr class="{% if diff.difference_type == 'Добавлено в target' %}difference-added{% elif diff.difference_type == 'Удалено из target' %}difference-removed{% else %}difference-modified{% endif %}">
+                                <td>
+                                    <strong>{{ diff.attr_name }}</strong>
+                                    <br><small class="text-muted">{{ diff.attr_description or '' }}</small>
+                                </td>
                                 <td><strong>{{ diff.attribute_name }}</strong></td>
                                 <td>
                                     <div class="difference-text" title="{{ diff.source_value }}">
