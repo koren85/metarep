@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+
+{% block title %}Управление исключениями{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Главная</a></li>
+            <li class="breadcrumb-item active">Управление исключениями</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="row">
+    <div class="col-md-3">
+        <!-- Фильтры -->
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-funnel"></i> Фильтры</h5>
+            </div>
+            <div class="card-body">
+                <form method="GET" action="{{ url_for('exceptions') }}" id="filterForm">
+                    <div class="mb-3">
+                        <label for="search" class="form-label">Поиск</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="search" 
+                               name="search" 
+                               value="{{ current_filters.search or '' }}"
+                               placeholder="Поиск по атрибуту/свойству">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="entity_type" class="form-label">Тип сущности</label>
+                        <select class="form-select" id="entity_type" name="entity_type">
+                            <option value="">Все типы</option>
+                            <option value="class" {% if current_filters.entity_type == 'class' %}selected{% endif %}>Классы</option>
+                            <option value="group" {% if current_filters.entity_type == 'group' %}selected{% endif %}>Группы</option>
+                            <option value="attribute" {% if current_filters.entity_type == 'attribute' %}selected{% endif %}>Атрибуты</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="per_page" class="form-label">Записей на странице</label>
+                        <select class="form-select" id="per_page" name="per_page">
+                            <option value="25" {% if result.per_page == 25 %}selected{% endif %}>25</option>
+                            <option value="50" {% if result.per_page == 50 %}selected{% endif %}>50</option>
+                            <option value="100" {% if result.per_page == 100 %}selected{% endif %}>100</option>
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-sm w-100">
+                        <i class="bi bi-search"></i> Применить
+                    </button>
+                    
+                    <a href="{{ url_for('exceptions') }}" class="btn btn-outline-secondary btn-sm w-100 mt-2">
+                        <i class="bi bi-x-circle"></i> Сбросить
+                    </a>
+                </form>
+            </div>
+        </div>
+
+        <!-- Быстрые действия -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="bi bi-lightning"></i> Действия</h5>
+            </div>
+            <div class="card-body">
+                <button class="btn btn-success btn-sm w-100 mb-2" onclick="showCreateModal()">
+                    <i class="bi bi-plus-circle"></i> Добавить исключение
+                </button>
+                <button class="btn btn-warning btn-sm w-100 mb-2" onclick="reloadExceptions()">
+                    <i class="bi bi-arrow-clockwise"></i> Перезагрузить из файлов
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-9">
+        {% if result.error %}
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle"></i> {{ result.error }}
+        </div>
+        {% else %}
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-gear-fill"></i> Исключения
+                    <span class="badge bg-secondary">{{ result.total_count }}</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if result.exceptions %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Тип</th>
+                                <th>Атрибут</th>
+                                <th>Свойство</th>
+                                <th>Действие</th>
+                                <th>Создано</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for exception in result.exceptions %}
+                            <tr>
+                                <td>{{ exception.id }}</td>
+                                <td>
+                                    <span class="badge {% if exception.entity_type == 'class' %}bg-primary{% elif exception.entity_type == 'group' %}bg-success{% else %}bg-warning{% endif %}">
+                                        {{ exception.entity_type }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <code>{{ exception.entity_name }}</code>
+                                </td>
+                                <td>{{ exception.property_name }}</td>
+                                <td>
+                                    <span class="badge {% if exception.action == 0 %}bg-secondary{% else %}bg-info{% endif %}">
+                                        {{ exception.action_name }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <small class="text-muted">
+                                        {% if exception.created_at %}
+                                            {{ exception.created_at | strftime('%d.%m.%Y %H:%M') }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </small>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary" 
+                                                onclick="showEditModal({{ exception.id }})"
+                                                title="Редактировать">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-outline-danger" 
+                                                onclick="deleteException({{ exception.id }})"
+                                                title="Удалить">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Пагинация -->
+                {% if result.total_pages > 1 %}
+                <nav aria-label="Навигация по страницам">
+                    <ul class="pagination justify-content-center">
+                        {% if result.has_prev %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('exceptions', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, entity_type=current_filters.entity_type) }}">
+                                Предыдущая
+                            </a>
+                        </li>
+                        {% endif %}
+                        
+                        {% for page_num in range(1, result.total_pages + 1) %}
+                            {% if page_num <= 3 or page_num >= result.total_pages - 2 or (page_num >= result.current_page - 1 and page_num <= result.current_page + 1) %}
+                            <li class="page-item {% if page_num == result.current_page %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('exceptions', page=page_num, per_page=result.per_page, search=current_filters.search, entity_type=current_filters.entity_type) }}">
+                                    {{ page_num }}
+                                </a>
+                            </li>
+                            {% elif page_num == 4 or page_num == result.total_pages - 3 %}
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if result.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('exceptions', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, entity_type=current_filters.entity_type) }}">
+                                Следующая
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-2">Исключения не найдены</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Модальное окно создания исключения -->
+<div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить исключение</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createForm">
+                    <div class="mb-3">
+                        <label for="create_entity_type" class="form-label">Тип сущности</label>
+                        <select class="form-select" id="create_entity_type" name="entity_type" required>
+                            <option value="">Выберите тип</option>
+                            <option value="class">Класс</option>
+                            <option value="group">Группа</option>
+                            <option value="attribute">Атрибут</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="create_entity_name" class="form-label">Атрибут</label>
+                        <input type="text" class="form-control" id="create_entity_name" name="entity_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="create_property_name" class="form-label">Свойство</label>
+                        <input type="text" class="form-control" id="create_property_name" name="property_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="create_action" class="form-label">Действие</label>
+                        <select class="form-select" id="create_action" name="action" required>
+                            <option value="0">Игнорировать</option>
+                            <option value="-1">Обновить</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="createException()">Создать</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно редактирования исключения -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редактировать исключение</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editForm">
+                    <input type="hidden" id="edit_id">
+                    <div class="mb-3">
+                        <label for="edit_entity_type" class="form-label">Тип сущности</label>
+                        <select class="form-select" id="edit_entity_type" name="entity_type" required>
+                            <option value="class">Класс</option>
+                            <option value="group">Группа</option>
+                            <option value="attribute">Атрибут</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_entity_name" class="form-label">Атрибут</label>
+                        <input type="text" class="form-control" id="edit_entity_name" name="entity_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_property_name" class="form-label">Свойство</label>
+                        <input type="text" class="form-control" id="edit_property_name" name="property_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_action" class="form-label">Действие</label>
+                        <select class="form-select" id="edit_action" name="action" required>
+                            <option value="0">Игнорировать</option>
+                            <option value="-1">Обновить</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="updateException()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Глобальные переменные для модальных окон
+let createModal, editModal;
+
+// Инициализация после загрузки DOM
+document.addEventListener('DOMContentLoaded', function() {
+    createModal = new bootstrap.Modal(document.getElementById('createModal'));
+    editModal = new bootstrap.Modal(document.getElementById('editModal'));
+});
+
+function showCreateModal() {
+    const form = document.getElementById('createForm');
+    if (form) {
+        form.reset();
+    }
+    if (createModal) {
+        createModal.show();
+    }
+}
+
+function showEditModal(id) {
+    console.log('Загрузка данных для исключения ID:', id);
+    
+    fetch(`/api/exceptions/${id}`)
+        .then(response => {
+            console.log('Ответ сервера:', response.status);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Полученные данные:', data);
+            
+            if (data.error) {
+                alert('Ошибка: ' + data.error);
+                return;
+            }
+            
+            // Проверяем что все поля существуют
+            if (data.id === undefined || !data.entity_type || !data.entity_name || !data.property_name || data.action === undefined) {
+                console.error('Неполные данные:', data);
+                alert('Ошибка: получены неполные данные');
+                return;
+            }
+            
+            // Заполняем форму
+            const elements = {
+                'edit_id': data.id,
+                'edit_entity_type': data.entity_type,
+                'edit_entity_name': data.entity_name,
+                'edit_property_name': data.property_name,
+                'edit_action': data.action
+            };
+            
+            for (const [elementId, value] of Object.entries(elements)) {
+                const element = document.getElementById(elementId);
+                if (element) {
+                    element.value = value;
+                } else {
+                    console.error('Элемент не найден:', elementId);
+                }
+            }
+            
+            if (editModal) {
+                editModal.show();
+            } else {
+                console.error('editModal не инициализирован');
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка запроса:', error);
+            alert('Ошибка загрузки данных: ' + error.message);
+        });
+}
+
+function createException() {
+    const form = document.getElementById('createForm');
+    const formData = new FormData(form);
+    
+    const data = {
+        entity_type: formData.get('entity_type'),
+        entity_name: formData.get('entity_name'),
+        property_name: formData.get('property_name'),
+        action: parseInt(formData.get('action'))
+    };
+    
+    fetch('/api/exceptions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.error) {
+            alert('Ошибка: ' + result.error);
+        } else {
+            createModal.hide();
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка создания исключения');
+    });
+}
+
+function updateException() {
+    const id = document.getElementById('edit_id').value;
+    const form = document.getElementById('editForm');
+    const formData = new FormData(form);
+    
+    const data = {
+        entity_type: formData.get('entity_type'),
+        entity_name: formData.get('entity_name'),
+        property_name: formData.get('property_name'),
+        action: parseInt(formData.get('action'))
+    };
+    
+    fetch(`/api/exceptions/${id}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.error) {
+            alert('Ошибка: ' + result.error);
+        } else {
+            editModal.hide();
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка обновления исключения');
+    });
+}
+
+function deleteException(id) {
+    if (!confirm('Вы уверены, что хотите удалить это исключение?')) {
+        return;
+    }
+    
+    fetch(`/api/exceptions/${id}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.error) {
+            alert('Ошибка: ' + result.error);
+        } else {
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка удаления исключения');
+    });
+}
+
+function reloadExceptions() {
+    if (!confirm('Перезагрузить исключения из файлов? Это может занять время.')) {
+        return;
+    }
+    
+    // Здесь можно добавить API для принудительной перезагрузки
+    alert('Функция перезагрузки будет добавлена позже');
+}
+</script>
+{% endblock %} 

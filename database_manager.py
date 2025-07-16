@@ -261,6 +261,129 @@ class DatabaseManager:
         finally:
             self.connection.setAutoCommit(True)
 
+    def create_meta_statistic_table(self):
+        """Создание таблицы исключений если не существует"""
+        create_query = """
+            CREATE TABLE IF NOT EXISTS __meta_statistic (
+                id SERIAL PRIMARY KEY,
+                entity_type VARCHAR(20) NOT NULL,
+                entity_name VARCHAR(100) NOT NULL,
+                property_name VARCHAR(100) NOT NULL,
+                action INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(entity_type, entity_name, property_name)
+            )
+        """
+        
+        try:
+            if not self.connect():
+                return False
+                
+            statement = self.connection.createStatement()
+            statement.execute(create_query)
+            statement.close()
+            return True
+            
+        except Exception as e:
+            print(f"Ошибка создания таблицы __meta_statistic: {e}")
+            return False
+        finally:
+            self.disconnect()
+
+    def init_exceptions_data(self, force_reload=False):
+        """Инициализация данных исключений из файлов"""
+        import os
+        
+        # Проверяем есть ли уже данные
+        if not force_reload:
+            check_query = "SELECT COUNT(*) FROM __meta_statistic"
+            try:
+                if not self.connect():
+                    return False
+                result = self.execute_query(check_query)
+                if result and int(result[0][0]) > 0:
+                    print("Данные исключений уже загружены")
+                    return True
+            except Exception as e:
+                print(f"Ошибка проверки данных: {e}")
+            finally:
+                self.disconnect()
+        
+        # Файлы исключений
+        files_mapping = {
+            'class': 'исключения классо.md',
+            'group': 'исключения групп.md', 
+            'attribute': 'исключение атрибутов.md'
+        }
+        
+        try:
+            if not self.connect():
+                return False
+                
+            # Очищаем таблицу при force_reload
+            if force_reload:
+                statement = self.connection.createStatement()
+                statement.execute("DELETE FROM __meta_statistic")
+                statement.close()
+            
+            for entity_type, filename in files_mapping.items():
+                if os.path.exists(filename):
+                    self._load_exceptions_from_file(filename, entity_type)
+                    
+            return True
+            
+        except Exception as e:
+            print(f"Ошибка инициализации данных исключений: {e}")
+            return False
+        finally:
+            self.disconnect()
+    
+    def _load_exceptions_from_file(self, filename, entity_type):
+        """Загрузка исключений из файла"""
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                
+            # Пропускаем заголовок
+            for line in lines[1:]:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                parts = line.split('\t')
+                if len(parts) >= 3:
+                    attr_title = parts[0].strip()
+                    attr_name = parts[1].strip()
+                    # Третья колонка attr_map игнорируется для исключений
+                    
+                    # Используем простой INSERT с WHERE NOT EXISTS для избежания дубликатов
+                    insert_query = """
+                        INSERT INTO __meta_statistic (entity_type, entity_name, property_name, action)
+                        SELECT ?, ?, ?, ?
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM __meta_statistic 
+                            WHERE entity_type = ? AND entity_name = ? AND property_name = ?
+                        )
+                    """
+                    
+                    try:
+                        prep_stmt = self.connection.prepareStatement(insert_query)
+                        prep_stmt.setString(1, entity_type)
+                        prep_stmt.setString(2, attr_name)
+                        prep_stmt.setString(3, attr_title)
+                        prep_stmt.setInt(4, 0)
+                        prep_stmt.setString(5, entity_type)
+                        prep_stmt.setString(6, attr_name)
+                        prep_stmt.setString(7, attr_title)
+                        prep_stmt.executeUpdate()
+                        prep_stmt.close()
+                    except Exception as e:
+                        print(f"Ошибка вставки записи {entity_type}/{attr_name}/{attr_title}: {e}")
+                        
+        except Exception as e:
+            print(f"Ошибка загрузки файла {filename}: {e}")
+
 class MSSQLManager(DatabaseManager):
     """Менеджер для работы с Microsoft SQL Server"""
     

@@ -13,6 +13,26 @@ class DataService:
         self.db_manager = PostgreSQLManager()
         self.base_url = config.sitex_context_url.rstrip('/')
         
+        # Инициализируем таблицу исключений при запуске
+        self._init_exceptions_table()
+        
+    def _init_exceptions_table(self):
+        """Инициализация таблицы исключений"""
+        try:
+            # Создаем таблицу если не существует
+            if self.db_manager.create_meta_statistic_table():
+                print("✅ Таблица __meta_statistic создана или уже существует")
+                
+                # Загружаем данные исключений из файлов
+                if self.db_manager.init_exceptions_data():
+                    print("✅ Данные исключений загружены")
+                else:
+                    print("⚠️ Ошибка загрузки данных исключений")
+            else:
+                print("❌ Ошибка создания таблицы __meta_statistic")
+        except Exception as e:
+            print(f"❌ Ошибка инициализации таблицы исключений: {e}")
+    
     def get_classes(self, page: int = 1, per_page: int = 20, 
                    search: str = None, status_variance: int = None, 
                    event: int = None, base_url: str = None) -> Dict[str, Any]:
@@ -789,6 +809,10 @@ class DataService:
             differences = []
             for row in result:
                 difference_type = self._get_difference_type(row[4], row[5])
+                
+                # Получаем действие исключения для этого различия
+                exception_action = self.get_exception_action('class', row[3], row[3])
+                
                 differences.append({
                     'class_ouid': row[0],
                     'class_name': row[1],
@@ -796,7 +820,11 @@ class DataService:
                     'attribute_name': row[3],
                     'source_value': row[4],
                     'target_value': row[5],
-                    'difference_type': difference_type
+                    'difference_type': difference_type,
+                    'exception_action': exception_action,
+                    'exception_action_name': self._get_action_name(exception_action),
+                    'should_ignore': exception_action == 0,
+                    'should_update': exception_action == -1
                 })
             
             return differences
@@ -971,6 +999,10 @@ class DataService:
             differences = []
             for row in result:
                 difference_type = self._get_difference_type(row[4], row[5])
+                
+                # Получаем действие исключения для этого различия
+                exception_action = self.get_exception_action('group', row[3], row[3])
+                
                 differences.append({
                     'attr_grp_ouid': row[0],
                     'attr_grp_name': row[1],
@@ -978,7 +1010,11 @@ class DataService:
                     'attribute_name': row[3],
                     'source_value': row[4],
                     'target_value': row[5],
-                    'difference_type': difference_type
+                    'difference_type': difference_type,
+                    'exception_action': exception_action,
+                    'exception_action_name': self._get_action_name(exception_action),
+                    'should_ignore': exception_action == 0,
+                    'should_update': exception_action == -1
                 })
             
             return differences
@@ -1080,6 +1116,10 @@ class DataService:
             differences = []
             for row in result:
                 difference_type = self._get_difference_type(row[4], row[5])
+                
+                # Получаем действие исключения для этого различия
+                exception_action = self.get_exception_action('attribute', row[1], row[3])
+                
                 differences.append({
                     'attr_ouid': row[0],
                     'attr_name': row[1],
@@ -1087,7 +1127,11 @@ class DataService:
                     'attribute_name': row[3],
                     'source_value': row[4],
                     'target_value': row[5],
-                    'difference_type': difference_type
+                    'difference_type': difference_type,
+                    'exception_action': exception_action,
+                    'exception_action_name': self._get_action_name(exception_action),
+                    'should_ignore': exception_action == 0,
+                    'should_update': exception_action == -1
                 })
             
             return differences
@@ -1145,4 +1189,321 @@ class DataService:
         elif source_value != target_value:
             return 'Изменено значение'
         else:
-            return 'Неизвестный тип' 
+            return 'Неизвестный тип'
+
+    # ===== CRUD методы для работы с исключениями =====
+    
+    def get_exceptions(self, page: int = 1, per_page: int = 50, 
+                       entity_type: str = None, search: str = None) -> Dict[str, Any]:
+        """Получение списка исключений с пагинацией"""
+        
+        where_conditions = []
+        
+        if entity_type:
+            where_conditions.append(f"entity_type = '{entity_type}'")
+            
+        if search:
+            search_escaped = search.replace("'", "''")
+            where_conditions.append(
+                f"(entity_name ILIKE '%{search_escaped}%' OR property_name ILIKE '%{search_escaped}%')"
+            )
+            
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # Общее количество записей
+        count_query = f"""
+            SELECT COUNT(*) 
+            FROM __meta_statistic 
+            WHERE {where_clause}
+        """
+        
+        # Основной запрос с пагинацией
+        offset = (page - 1) * per_page
+        main_query = f"""
+            SELECT id, entity_type, entity_name, property_name, action, 
+                   created_at, updated_at
+            FROM __meta_statistic 
+            WHERE {where_clause}
+            ORDER BY entity_type, entity_name, property_name
+            LIMIT {per_page} OFFSET {offset}
+        """
+        
+        try:
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+                
+            # Получаем общее количество
+            total_count = int(self.db_manager.execute_query(count_query)[0][0])
+            
+            # Получаем данные
+            exceptions = self.db_manager.execute_query(main_query)
+            
+            # Преобразуем в словари
+            exceptions_list = []
+            for row in exceptions:
+                exceptions_list.append({
+                    'id': int(row[0]),
+                    'entity_type': str(row[1]),
+                    'entity_name': str(row[2]),
+                    'property_name': str(row[3]),
+                    'action': int(row[4]),
+                    'action_name': str(self._get_action_name(row[4])),
+                    'created_at': str(row[5]) if row[5] else None,
+                    'updated_at': str(row[6]) if row[6] else None
+                })
+            
+            total_pages = math.ceil(total_count / per_page)
+            
+            return {
+                'exceptions': exceptions_list,
+                'total_count': total_count,
+                'total_pages': total_pages,
+                'current_page': page,
+                'per_page': per_page,
+                'has_prev': page > 1,
+                'has_next': page < total_pages
+            }
+            
+        except Exception as e:
+            return {"error": f"Ошибка выполнения запроса: {e}"}
+        finally:
+            self.db_manager.disconnect()
+    
+    def get_exception(self, exception_id: int) -> Dict[str, Any]:
+        """Получение исключения по ID"""
+        
+        query = """
+            SELECT id, entity_type, entity_name, property_name, action, 
+                   created_at, updated_at
+            FROM __meta_statistic 
+            WHERE id = ?
+        """
+        
+        try:
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+                
+            # Используем prepared statement
+            prep_stmt = self.db_manager.connection.prepareStatement(query)
+            prep_stmt.setInt(1, exception_id)
+            result_set = prep_stmt.executeQuery()
+            
+            if result_set.next():
+                exception_data = {
+                    'id': int(result_set.getInt('id')),
+                    'entity_type': str(result_set.getString('entity_type')),
+                    'entity_name': str(result_set.getString('entity_name')),
+                    'property_name': str(result_set.getString('property_name')),
+                    'action': int(result_set.getInt('action')),
+                    'action_name': str(self._get_action_name(result_set.getInt('action'))),
+                    'created_at': str(result_set.getTimestamp('created_at')) if result_set.getTimestamp('created_at') else None,
+                    'updated_at': str(result_set.getTimestamp('updated_at')) if result_set.getTimestamp('updated_at') else None
+                }
+                
+                result_set.close()
+                prep_stmt.close()
+                return exception_data
+            else:
+                result_set.close()
+                prep_stmt.close()
+                return {"error": "Исключение не найдено"}
+                
+        except Exception as e:
+            return {"error": f"Ошибка выполнения запроса: {e}"}
+        finally:
+            self.db_manager.disconnect()
+    
+    def create_exception(self, entity_type: str, entity_name: str, 
+                        property_name: str, action: int = 0) -> Dict[str, Any]:
+        """Создание нового исключения"""
+        
+        insert_query = """
+            INSERT INTO __meta_statistic (entity_type, entity_name, property_name, action)
+            VALUES (?, ?, ?, ?)
+            RETURNING id
+        """
+        
+        # Проверяем на дубликаты
+        check_query = """
+            SELECT id FROM __meta_statistic 
+            WHERE entity_type = ? AND entity_name = ? AND property_name = ?
+        """
+        
+        try:
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+            
+            # Проверяем на дубликаты
+            prep_stmt_check = self.db_manager.connection.prepareStatement(check_query)
+            prep_stmt_check.setString(1, entity_type)
+            prep_stmt_check.setString(2, entity_name)
+            prep_stmt_check.setString(3, property_name)
+            result_set = prep_stmt_check.executeQuery()
+            
+            if result_set.next():
+                result_set.close()
+                prep_stmt_check.close()
+                return {"error": "Исключение уже существует"}
+            
+            result_set.close()
+            prep_stmt_check.close()
+            
+            # Создаем новое исключение
+            prep_stmt = self.db_manager.connection.prepareStatement(insert_query)
+            prep_stmt.setString(1, entity_type)
+            prep_stmt.setString(2, entity_name)
+            prep_stmt.setString(3, property_name)
+            prep_stmt.setInt(4, action)
+            
+            result_set = prep_stmt.executeQuery()
+            if result_set.next():
+                new_id = result_set.getInt(1)
+                result_set.close()
+                prep_stmt.close()
+                return {"success": True, "id": new_id}
+            else:
+                result_set.close()
+                prep_stmt.close()
+                return {"error": "Ошибка создания исключения"}
+                
+        except Exception as e:
+            return {"error": f"Ошибка выполнения запроса: {e}"}
+        finally:
+            self.db_manager.disconnect()
+    
+    def update_exception(self, exception_id: int, entity_type: str = None, 
+                        entity_name: str = None, property_name: str = None, 
+                        action: int = None) -> Dict[str, Any]:
+        """Обновление исключения"""
+        
+        # Формируем SET часть динамически
+        set_parts = []
+        params = []
+        
+        if entity_type is not None:
+            set_parts.append("entity_type = ?")
+            params.append(entity_type)
+            
+        if entity_name is not None:
+            set_parts.append("entity_name = ?")
+            params.append(entity_name)
+            
+        if property_name is not None:
+            set_parts.append("property_name = ?")
+            params.append(property_name)
+            
+        if action is not None:
+            set_parts.append("action = ?")
+            params.append(action)
+            
+        if not set_parts:
+            return {"error": "Нет данных для обновления"}
+            
+        set_parts.append("updated_at = CURRENT_TIMESTAMP")
+        params.append(exception_id)
+        
+        update_query = f"""
+            UPDATE __meta_statistic 
+            SET {', '.join(set_parts)}
+            WHERE id = ?
+        """
+        
+        try:
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+                
+            prep_stmt = self.db_manager.connection.prepareStatement(update_query)
+            
+            # Устанавливаем параметры
+            for i, param in enumerate(params, 1):
+                if isinstance(param, int):
+                    prep_stmt.setInt(i, param)
+                else:
+                    prep_stmt.setString(i, str(param))
+            
+            rows_affected = prep_stmt.executeUpdate()
+            prep_stmt.close()
+            
+            if rows_affected > 0:
+                return {"success": True}
+            else:
+                return {"error": "Исключение не найдено"}
+                
+        except Exception as e:
+            return {"error": f"Ошибка выполнения запроса: {e}"}
+        finally:
+            self.db_manager.disconnect()
+    
+    def delete_exception(self, exception_id: int) -> Dict[str, Any]:
+        """Удаление исключения"""
+        
+        delete_query = "DELETE FROM __meta_statistic WHERE id = ?"
+        
+        try:
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+                
+            prep_stmt = self.db_manager.connection.prepareStatement(delete_query)
+            prep_stmt.setInt(1, exception_id)
+            
+            rows_affected = prep_stmt.executeUpdate()
+            prep_stmt.close()
+            
+            if rows_affected > 0:
+                return {"success": True}
+            else:
+                return {"error": "Исключение не найдено"}
+                
+        except Exception as e:
+            return {"error": f"Ошибка выполнения запроса: {e}"}
+        finally:
+            self.db_manager.disconnect()
+    
+    def get_exception_action(self, entity_type: str, entity_name: str, 
+                           property_name: str) -> int:
+        """Получение действия для конкретного исключения"""
+        
+        query = """
+            SELECT action FROM __meta_statistic 
+            WHERE entity_type = ? AND entity_name = ? AND property_name = ?
+        """
+        
+        try:
+            if not self.db_manager.connect():
+                return 0  # По умолчанию игнорировать
+                
+            prep_stmt = self.db_manager.connection.prepareStatement(query)
+            prep_stmt.setString(1, entity_type)
+            prep_stmt.setString(2, entity_name)
+            prep_stmt.setString(3, property_name)
+            result_set = prep_stmt.executeQuery()
+            
+            if result_set.next():
+                action = result_set.getInt('action')
+                result_set.close()
+                prep_stmt.close()
+                return action
+            else:
+                result_set.close()
+                prep_stmt.close()
+                return 0  # По умолчанию игнорировать
+                
+        except Exception as e:
+            print(f"Ошибка получения действия исключения: {e}")
+            return 0
+        finally:
+            self.db_manager.disconnect()
+    
+    def _get_action_name(self, action) -> str:
+        """Получение названия действия по коду"""
+        # Преобразуем в число если получили строку
+        try:
+            action_int = int(action) if action is not None else 0
+        except (ValueError, TypeError):
+            action_int = 0
+            
+        action_names = {
+            0: "Игнорировать",
+            -1: "Обновить"
+        }
+        return action_names.get(action_int, "Неизвестно") 

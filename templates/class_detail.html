@@ -451,6 +451,8 @@
                                 <th>Source</th>
                                 <th>Target</th>
                                 <th>Тип различия</th>
+                                <th>Действие</th>
+                                <th>Управление</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -471,6 +473,25 @@
                                     <span class="badge {% if diff.difference_type == 'Добавлено в target' %}bg-success{% elif diff.difference_type == 'Удалено из target' %}bg-danger{% else %}bg-warning{% endif %}">
                                         {{ diff.difference_type }}
                                     </span>
+                                </td>
+                                <td>
+                                    <span class="badge {% if diff.should_ignore %}bg-secondary{% elif diff.should_update %}bg-info{% else %}bg-light text-dark{% endif %}">
+                                        {{ diff.exception_action_name or 'Не настроено' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary btn-sm" 
+                                                onclick="quickCreateException('class', '{{ diff.attribute_name }}', '{{ diff.attribute_name }}')"
+                                                title="Создать исключение">
+                                            <i class="bi bi-plus-circle"></i>
+                                        </button>
+                                        <a href="{{ url_for('exceptions', entity_type='class', search=diff.attribute_name) }}" 
+                                           class="btn btn-outline-secondary btn-sm"
+                                           title="Управление исключениями">
+                                            <i class="bi bi-gear"></i>
+                                        </a>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -498,6 +519,8 @@
                                 <th>Source</th>
                                 <th>Target</th>
                                 <th>Тип различия</th>
+                                <th>Действие</th>
+                                <th>Управление</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -523,6 +546,25 @@
                                     <span class="badge {% if diff.difference_type == 'Добавлено в target' %}bg-success{% elif diff.difference_type == 'Удалено из target' %}bg-danger{% else %}bg-warning{% endif %}">
                                         {{ diff.difference_type }}
                                     </span>
+                                </td>
+                                <td>
+                                    <span class="badge {% if diff.should_ignore %}bg-secondary{% elif diff.should_update %}bg-info{% else %}bg-light text-dark{% endif %}">
+                                        {{ diff.exception_action_name or 'Не настроено' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary btn-sm" 
+                                                onclick="quickCreateException('group', '{{ diff.attribute_name }}', '{{ diff.attribute_name }}')"
+                                                title="Создать исключение">
+                                            <i class="bi bi-plus-circle"></i>
+                                        </button>
+                                        <a href="{{ url_for('exceptions', entity_type='group', search=diff.attribute_name) }}" 
+                                           class="btn btn-outline-secondary btn-sm"
+                                           title="Управление исключениями">
+                                            <i class="bi bi-gear"></i>
+                                        </a>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -550,6 +592,8 @@
                                 <th>Source</th>
                                 <th>Target</th>
                                 <th>Тип различия</th>
+                                <th>Действие</th>
+                                <th>Управление</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -575,6 +619,25 @@
                                     <span class="badge {% if diff.difference_type == 'Добавлено в target' %}bg-success{% elif diff.difference_type == 'Удалено из target' %}bg-danger{% else %}bg-warning{% endif %}">
                                         {{ diff.difference_type }}
                                     </span>
+                                </td>
+                                <td>
+                                    <span class="badge {% if diff.should_ignore %}bg-secondary{% elif diff.should_update %}bg-info{% else %}bg-light text-dark{% endif %}">
+                                        {{ diff.exception_action_name or 'Не настроено' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary btn-sm" 
+                                                onclick="quickCreateException('attribute', '{{ diff.attr_name }}', '{{ diff.attribute_name }}')"
+                                                title="Создать исключение">
+                                            <i class="bi bi-plus-circle"></i>
+                                        </button>
+                                        <a href="{{ url_for('exceptions', entity_type='attribute', search=diff.attribute_name) }}" 
+                                           class="btn btn-outline-secondary btn-sm"
+                                           title="Управление исключениями">
+                                            <i class="bi bi-gear"></i>
+                                        </a>
+                                    </div>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -638,5 +701,36 @@ document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
         }
     });
 });
+
+// Быстрое создание исключения
+function quickCreateException(entityType, entityName, propertyName) {
+    const data = {
+        entity_type: entityType,
+        entity_name: entityName,
+        property_name: propertyName,
+        action: 0  // По умолчанию "игнорировать"
+    };
+    
+    fetch('/api/exceptions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.error) {
+            alert('Ошибка: ' + result.error);
+        } else {
+            alert('Исключение создано успешно!');
+            location.reload(); // Перезагружаем страницу для обновления данных
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка создания исключения');
+    });
+}
 </script>
 {% endblock %} 

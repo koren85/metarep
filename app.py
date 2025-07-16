@@ -8,6 +8,20 @@ from config import config
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
+
+# Добавляем фильтр для форматирования даты
+@app.template_filter('strftime')
+def strftime_filter(date_str, format='%d.%m.%Y %H:%M'):
+    if date_str:
+        # Убираем время зоны и миллисекунды если есть
+        date_str = date_str.split('+')[0].split('.')[0]
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+            return date_obj.strftime(format)
+        except:
+            return date_str.replace('T', ' ')[:16]
+    return '-'
+
 print(os.environ.get('JAVA_HOME'))
 # Инициализация сервиса данных
 data_service = DataService()
@@ -273,6 +287,139 @@ def api_statistics():
     
     result = data_service.get_statistics()
     return jsonify(result)
+
+# ===== API для работы с исключениями =====
+
+@app.route('/exceptions')
+def exceptions():
+    """Страница управления исключениями"""
+    
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    entity_type = request.args.get('entity_type', '')
+    search = request.args.get('search', '')
+    
+    # Проверяем корректность значений
+    if page < 1:
+        page = 1
+    if per_page < 1 or per_page > 200:
+        per_page = 50
+    
+    # Получаем данные исключений
+    result = data_service.get_exceptions(
+        page=page,
+        per_page=per_page,
+        entity_type=entity_type if entity_type else None,
+        search=search if search else None
+    )
+    
+    return render_template('exceptions.html', 
+                         result=result,
+                         current_filters={
+                             'entity_type': entity_type,
+                             'search': search
+                         })
+
+@app.route('/api/exceptions')
+def api_exceptions():
+    """API для получения списка исключений (для AJAX)"""
+    
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    entity_type = request.args.get('entity_type', '')
+    search = request.args.get('search', '')
+    
+    if page < 1:
+        page = 1
+    if per_page < 1 or per_page > 200:
+        per_page = 50
+    
+    result = data_service.get_exceptions(
+        page=page,
+        per_page=per_page,
+        entity_type=entity_type if entity_type else None,
+        search=search if search else None
+    )
+    
+    return jsonify(result)
+
+@app.route('/api/exceptions/<int:exception_id>')
+def api_get_exception(exception_id):
+    """API для получения исключения по ID"""
+    
+    result = data_service.get_exception(exception_id)
+    return jsonify(result)
+
+@app.route('/api/exceptions', methods=['POST'])
+def api_create_exception():
+    """API для создания нового исключения"""
+    
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({"error": "Отсутствуют данные"}), 400
+    
+    entity_type = data.get('entity_type')
+    entity_name = data.get('entity_name')
+    property_name = data.get('property_name')
+    action = data.get('action', 0)
+    
+    if not entity_type or not entity_name or not property_name:
+        return jsonify({"error": "Обязательные поля: entity_type, entity_name, property_name"}), 400
+    
+    if entity_type not in ['class', 'group', 'attribute']:
+        return jsonify({"error": "entity_type должен быть: class, group или attribute"}), 400
+    
+    if action not in [0, -1]:
+        return jsonify({"error": "action должен быть: 0 (игнорировать) или -1 (обновить)"}), 400
+    
+    result = data_service.create_exception(entity_type, entity_name, property_name, action)
+    
+    if "error" in result:
+        return jsonify(result), 400
+    else:
+        return jsonify(result), 201
+
+@app.route('/api/exceptions/<int:exception_id>', methods=['PUT'])
+def api_update_exception(exception_id):
+    """API для обновления исключения"""
+    
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({"error": "Отсутствуют данные"}), 400
+    
+    entity_type = data.get('entity_type')
+    entity_name = data.get('entity_name') 
+    property_name = data.get('property_name')
+    action = data.get('action')
+    
+    # Валидация если поля переданы
+    if entity_type and entity_type not in ['class', 'group', 'attribute']:
+        return jsonify({"error": "entity_type должен быть: class, group или attribute"}), 400
+    
+    if action is not None and action not in [0, -1]:
+        return jsonify({"error": "action должен быть: 0 (игнорировать) или -1 (обновить)"}), 400
+    
+    result = data_service.update_exception(
+        exception_id, entity_type, entity_name, property_name, action
+    )
+    
+    if "error" in result:
+        return jsonify(result), 400
+    else:
+        return jsonify(result)
+
+@app.route('/api/exceptions/<int:exception_id>', methods=['DELETE'])
+def api_delete_exception(exception_id):
+    """API для удаления исключения"""
+    
+    result = data_service.delete_exception(exception_id)
+    
+    if "error" in result:
+        return jsonify(result), 400
+    else:
+        return jsonify(result)
 
 @app.errorhandler(404)
 def not_found(error):
