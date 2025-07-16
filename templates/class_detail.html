@@ -312,9 +312,9 @@
                                     <th>OUID</th>
                                     <th>Имя</th>
                                     <th>Заголовок</th>
-                                    <th>Порядок</th>
                                     <th>Тип просмотра</th>
-                                    <th>Системная</th>
+                                    <th>Статус сравнения</th>
+                                    <th>Рекомендованное действие</th>
                                     <th>Действия</th>
                                 </tr>
                             </thead>
@@ -324,14 +324,26 @@
                                     <td><code>{{ group.ouid }}</code></td>
                                     <td><span class="field-value">{{ group.name or 'Не указано' }}</span></td>
                                     <td><span class="field-value">{{ group.title or 'Не указано' }}</span></td>
-                                    <td><span class="badge bg-info">{{ group.num or 0 }}</span></td>
                                     <td><span class="field-value">{{ group.a_viewtype or 'Не указано' }}</span></td>
                                     <td>
-                                        {% if group.a_issystem %}
-                                            <span class="badge bg-primary">Да</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Нет</span>
-                                        {% endif %}
+                                        <span class="badge {% if group.a_status_variance == 2 %}bg-warning{% else %}bg-secondary{% endif %}">
+                                            {% if group.a_status_variance|int == 0 %}Идентичны
+                                            {% elif group.a_status_variance|int == 1 %}Отсутствует
+                                            {% elif group.a_status_variance|int == 2 %}Отличаются
+                                            {% else %}{{ group.a_status_variance }}
+                                            {% endif %}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="badge {% if group.a_event == 4 %}bg-info{% else %}bg-secondary{% endif %}">
+                                            {% if group.a_event|int == 0 %}игнорировать
+                                            {% elif group.a_event|int == 1 %}Добавить
+                                            {% elif group.a_event|int == 2 %}Обновить
+                                            {% elif group.a_event|int == 3 %}Не в списке для переноса
+                                            {% elif group.a_event|int == 4 %}В списке на миграцию
+                                            {% else %}{{ group.a_event }}
+                                            {% endif %}
+                                        </span>
                                     </td>
                                     <td>
                                         <button onclick="openAdmin('{{ group.admin_url }}')" 
@@ -372,9 +384,8 @@
                                     <th>Имя</th>
                                     <th>Заголовок</th>
                                     <th>Тип данных</th>
-                                    <th>Видимый</th>
-                                    <th>Обязательный</th>
-                                    <th>Системный</th>
+                                    <th>Статус сравнения</th>
+                                    <th>Рекомендованное действие</th>
                                     <th>Действия</th>
                                 </tr>
                             </thead>
@@ -386,25 +397,24 @@
                                     <td><span class="field-value">{{ attr.title or 'Не указано' }}</span></td>
                                     <td><span class="badge bg-secondary">{{ attr.datatype_name or attr.ouiddatatype or 'Не указано' }}</span></td>
                                     <td>
-                                        {% if attr.visible %}
-                                            <span class="badge bg-success">Да</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Нет</span>
-                                        {% endif %}
+                                        <span class="badge {% if attr.a_status_variance == 2 %}bg-warning{% else %}bg-secondary{% endif %}">
+                                            {% if attr.a_status_variance|int == 0 %}Идентичны
+                                            {% elif attr.a_status_variance|int == 1 %}Отсутствует
+                                            {% elif attr.a_status_variance|int == 2 %}Отличаются
+                                            {% else %}{{ attr.a_status_variance }}
+                                            {% endif %}
+                                        </span>
                                     </td>
                                     <td>
-                                        {% if attr.mandatory %}
-                                            <span class="badge bg-danger">Да</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Нет</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if attr.a_issystem %}
-                                            <span class="badge bg-primary">Да</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Нет</span>
-                                        {% endif %}
+                                        <span class="badge {% if attr.a_event == 4 %}bg-info{% else %}bg-secondary{% endif %}">
+                                            {% if attr.a_event|int == 0 %}игнорировать
+                                            {% elif attr.a_event|int == 1 %}Добавить
+                                            {% elif attr.a_event|int == 2 %}Обновить
+                                            {% elif attr.a_event|int == 3 %}Не в списке для переноса
+                                            {% elif attr.a_event|int == 4 %}В списке на миграцию
+                                            {% else %}{{ attr.a_event }}
+                                            {% endif %}
+                                        </span>
                                     </td>
                                     <td>
                                         <button onclick="openAdmin('{{ attr.admin_url }}')" 
