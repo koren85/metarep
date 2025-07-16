@@ -1,0 +1,516 @@
+{% extends "base.html" %}
+
+{% block title %}{{ data.class.name }} - Детали класса{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('index', search=data.current_filters.search, status_variance=data.current_filters.status_variance, event=data.current_filters.event, base_url=data.current_filters.base_url) }}">Классы</a></li>
+            <li class="breadcrumb-item active">{{ data.class.name or 'Класс ' + data.class.ouid|string }}</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="row">
+    <div class="col-md-3">
+        <!-- Статистика класса -->
+        <div class="card stats-card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-bar-chart"></i> Статистика</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li><strong>Групп атрибутов:</strong> {{ data.statistics.groups_count }}</li>
+                    <li><strong>Атрибутов:</strong> {{ data.statistics.attributes_count }}</li>
+                    <li><strong>Различий:</strong> {{ data.statistics.differences_count }}</li>
+                    {% if data.filters_applied.search or data.filters_applied.status_variance is not none or data.filters_applied.event is not none %}
+                    <li><small class="text-muted">С учётом фильтра</small></li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Быстрая навигация -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-compass"></i> Навигация</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="#class-info" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-info-circle"></i> Информация о классе
+                    </a>
+                    <a href="#attr-groups" class="btn btn-outline-success btn-sm">
+                        <i class="bi bi-collection"></i> Группы атрибутов
+                    </a>
+                    <a href="#attributes" class="btn btn-outline-warning btn-sm">
+                        <i class="bi bi-list-ul"></i> Атрибуты
+                    </a>
+                    {% if data.differences %}
+                    <a href="#differences" class="btn btn-outline-danger btn-sm">
+                        <i class="bi bi-exclamation-triangle"></i> Различия
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Фильтры -->
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-funnel"></i> Фильтры</h5>
+            </div>
+            <div class="card-body">
+                <form method="GET" action="{{ url_for('class_detail', class_ouid=data.class.ouid) }}">
+                    <div class="mb-3">
+                        <label for="search" class="form-label">Поиск</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="search" 
+                               name="search" 
+                               value="{{ data.current_filters.search or '' }}"
+                               placeholder="Поиск по группам и атрибутам">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="status_variance" class="form-label">Status Variance</label>
+                        <select class="form-select" id="status_variance" name="status_variance">
+                            <option value="">Все</option>
+                            <option value="0" {% if data.current_filters.status_variance == 0 %}selected{% endif %}>0</option>
+                            <option value="1" {% if data.current_filters.status_variance == 1 %}selected{% endif %}>1</option>
+                            <option value="2" {% if data.current_filters.status_variance == 2 %}selected{% endif %}>2</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="event" class="form-label">Event</label>
+                        <select class="form-select" id="event" name="event">
+                            <option value="">Все</option>
+                            <option value="0" {% if data.current_filters.event == 0 %}selected{% endif %}>0</option>
+                            <option value="1" {% if data.current_filters.event == 1 %}selected{% endif %}>1</option>
+                            <option value="2" {% if data.current_filters.event == 2 %}selected{% endif %}>2</option>
+                            <option value="3" {% if data.current_filters.event == 3 %}selected{% endif %}>3</option>
+                            <option value="4" {% if data.current_filters.event == 4 %}selected{% endif %}>4</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="base_url" class="form-label">Базовый URL</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="base_url" 
+                               name="base_url" 
+                               value="{{ data.current_filters.base_url or '' }}"
+                               placeholder="http://10.3.0.254:22617/context">
+                        <div class="form-text">URL для ссылок на админку</div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-search"></i> Применить
+                        </button>
+                        <a href="{{ url_for('class_detail', class_ouid=data.class.ouid) }}" class="btn btn-secondary">
+                            <i class="bi bi-x"></i> Сбросить
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-9">
+        <!-- Заголовок -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>{{ data.class.name or 'Класс ' + data.class.ouid|string }}</h1>
+            <div>
+                <button onclick="openAdmin('{{ data.class.admin_url }}')" 
+                        class="btn btn-primary">
+                    <i class="bi bi-box-arrow-up-right"></i> Открыть в админке
+                </button>
+                <button onclick="toggleTechnicalFields()" 
+                        class="btn btn-secondary toggle-technical">
+                    <i class="bi bi-eye"></i> Показать технические поля
+                </button>
+            </div>
+        </div>
+        
+        <!-- Информация о классе -->
+        <div id="class-info" class="card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-info-circle"></i> Информация о классе</h5>
+            </div>
+            <div class="card-body technical-container">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <tbody>
+                            <tr>
+                                <td class="field-label">OUID</td>
+                                <td><code>{{ data.class.ouid }}</code></td>
+                            </tr>
+                            <tr>
+                                <td class="field-label">Имя</td>
+                                <td><span class="field-value">{{ data.class.name or 'Не указано' }}</span></td>
+                            </tr>
+                            <tr>
+                                <td class="field-label">Описание</td>
+                                <td><span class="field-value">{{ data.class.description or 'Не указано' }}</span></td>
+                            </tr>
+                            <tr>
+                                <td class="field-label">Status Variance</td>
+                                <td>
+                                    <span class="badge {% if data.class.a_status_variance == 2 %}bg-warning{% else %}bg-secondary{% endif %}">
+                                        {{ data.class.a_status_variance }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="field-label">Event</td>
+                                <td>
+                                    <span class="badge {% if data.class.a_event == 4 %}bg-info{% else %}bg-secondary{% endif %}">
+                                        {{ data.class.a_event }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="field-label">Системный</td>
+                                <td>
+                                    {% if data.class.a_issystem %}
+                                        <span class="badge bg-primary">Да</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Нет</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="field-label">Дата создания</td>
+                                <td>
+                                    {% if data.class.a_createdate %}
+                                        {{ data.class.a_createdate }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            
+                            <!-- Технические поля -->
+                            <tr class="technical-fields">
+                                <td class="field-label">Map</td>
+                                <td><span class="field-value">{{ data.class.map or 'Не указано' }}</span></td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">Datastore</td>
+                                <td><span class="field-value">{{ data.class.datastore or 'Не указано' }}</span></td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">Java Class</td>
+                                <td><span class="field-value">{{ data.class.java_class or 'Не указано' }}</span></td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">Java Handler</td>
+                                <td><span class="field-value">{{ data.class.java_handler or 'Не указано' }}</span></td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">Title Template</td>
+                                <td><span class="field-value">{{ data.class.titletemplate or 'Не указано' }}</span></td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">GUID</td>
+                                <td><span class="field-value">{{ data.class.guid or 'Не указано' }}</span></td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">Version</td>
+                                <td><span class="field-value">{{ data.class.a_version or 'Не указано' }}</span></td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">Parent OUID</td>
+                                <td>
+                                    {% if data.class.parent_ouid %}
+                                        <code>{{ data.class.parent_ouid }}</code>
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">Icon</td>
+                                <td><span class="field-value">{{ data.class.icon or 'Не указано' }}</span></td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">Virtual</td>
+                                <td>
+                                    {% if data.class.isvirtual %}
+                                        <span class="badge bg-info">Да</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Нет</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">Abstract</td>
+                                <td>
+                                    {% if data.class.a_abstract %}
+                                        <span class="badge bg-info">Да</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Нет</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr class="technical-fields">
+                                <td class="field-label">SQL View</td>
+                                <td>
+                                    {% if data.class.a_sql_view %}
+                                        <pre class="field-value">{{ data.class.a_sql_view }}</pre>
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Группы атрибутов -->
+        <div id="attr-groups" class="card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-collection"></i> Группы атрибутов ({{ data.groups|length }})
+                    {% if data.filters_applied.search or data.filters_applied.status_variance is not none or data.filters_applied.event is not none %}
+                        <span class="badge bg-warning ms-2">Фильтр применён</span>
+                    {% endif %}
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if data.groups %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>OUID</th>
+                                    <th>Имя</th>
+                                    <th>Заголовок</th>
+                                    <th>Порядок</th>
+                                    <th>Тип просмотра</th>
+                                    <th>Системная</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for group in data.groups %}
+                                <tr>
+                                    <td><code>{{ group.ouid }}</code></td>
+                                    <td><span class="field-value">{{ group.name or 'Не указано' }}</span></td>
+                                    <td><span class="field-value">{{ group.title or 'Не указано' }}</span></td>
+                                    <td><span class="badge bg-info">{{ group.num or 0 }}</span></td>
+                                    <td><span class="field-value">{{ group.a_viewtype or 'Не указано' }}</span></td>
+                                    <td>
+                                        {% if group.a_issystem %}
+                                            <span class="badge bg-primary">Да</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Нет</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button onclick="openAdmin('{{ group.admin_url }}')" 
+                                                class="btn btn-outline-secondary btn-sm" 
+                                                title="Открыть в админке">
+                                            <i class="bi bi-box-arrow-up-right"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Группы атрибутов не найдены.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Атрибуты -->
+        <div id="attributes" class="card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-list-ul"></i> Атрибуты ({{ data.attributes|length }})
+                    {% if data.filters_applied.search or data.filters_applied.status_variance is not none or data.filters_applied.event is not none %}
+                        <span class="badge bg-warning ms-2">Фильтр применён</span>
+                    {% endif %}
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if data.attributes %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>OUID</th>
+                                    <th>Имя</th>
+                                    <th>Заголовок</th>
+                                    <th>Описание</th>
+                                    <th>Тип данных</th>
+                                    <th>Видимый</th>
+                                    <th>Обязательный</th>
+                                    <th>Системный</th>
+                                    <th>Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for attr in data.attributes %}
+                                <tr>
+                                    <td><code>{{ attr.ouid }}</code></td>
+                                    <td><span class="field-value">{{ attr.name or 'Не указано' }}</span></td>
+                                    <td><span class="field-value">{{ attr.title or 'Не указано' }}</span></td>
+                                    <td>
+                                        <span class="text-muted">
+                                            {% if attr.description %}
+                                                {{ attr.description[:100] }}{% if attr.description|length > 100 %}...{% endif %}
+                                            {% else %}
+                                                Не указано
+                                            {% endif %}
+                                        </span>
+                                    </td>
+                                    <td><span class="badge bg-secondary">{{ attr.ouiddatatype or 'Не указано' }}</span></td>
+                                    <td>
+                                        {% if attr.visible %}
+                                            <span class="badge bg-success">Да</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Нет</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if attr.mandatory %}
+                                            <span class="badge bg-danger">Да</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Нет</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if attr.a_issystem %}
+                                            <span class="badge bg-primary">Да</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Нет</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button onclick="openAdmin('{{ attr.admin_url }}')" 
+                                                class="btn btn-outline-secondary btn-sm" 
+                                                title="Открыть в админке">
+                                            <i class="bi bi-box-arrow-up-right"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> Атрибуты не найдены.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Различия -->
+        {% if data.differences %}
+        <div id="differences" class="card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-exclamation-triangle"></i> Различия ({{ data.differences|length }})</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Атрибут</th>
+                                <th>Source</th>
+                                <th>Target</th>
+                                <th>Тип различия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for diff in data.differences %}
+                            <tr class="{% if diff.difference_type == 'Добавлено в target' %}difference-added{% elif diff.difference_type == 'Удалено из target' %}difference-removed{% else %}difference-modified{% endif %}">
+                                <td><strong>{{ diff.attribute_name }}</strong></td>
+                                <td>
+                                    <div class="difference-text" title="{{ diff.source_value }}">
+                                        {{ diff.source_value or 'Пусто' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="difference-text" title="{{ diff.target_value }}">
+                                        {{ diff.target_value or 'Пусто' }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge {% if diff.difference_type == 'Добавлено в target' %}bg-success{% elif diff.difference_type == 'Удалено из target' %}bg-danger{% else %}bg-warning{% endif %}">
+                                        {{ diff.difference_type }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Toast для уведомлений -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="copyToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header">
+            <i class="bi bi-clipboard-check text-success"></i>
+            <strong class="me-auto">Скопировано</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body">
+            Текст скопирован в буфер обмена!
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Добавляем обработчики для копирования значений
+document.addEventListener('DOMContentLoaded', function() {
+    // Клик по field-value для копирования
+    document.querySelectorAll('.field-value').forEach(function(element) {
+        element.addEventListener('click', function() {
+            copyToClipboard(this.textContent);
+        });
+        element.style.cursor = 'pointer';
+        element.title = 'Нажмите для копирования';
+    });
+    
+    // Клик по code для копирования
+    document.querySelectorAll('code').forEach(function(element) {
+        element.addEventListener('click', function() {
+            copyToClipboard(this.textContent);
+        });
+        element.style.cursor = 'pointer';
+        element.title = 'Нажмите для копирования';
+    });
+});
+
+// Плавная прокрутка к якорям
+document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
+    anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+            target.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
+    });
+});
+</script>
+{% endblock %} 

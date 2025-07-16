@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}Группы атрибутов - SiTex Анализ{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3">
+        <!-- Статистика -->
+        <div class="card stats-card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-bar-chart"></i> Статистика</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled">
+                    <li><strong>Всего классов:</strong> {{ statistics.total_classes or 0 }}</li>
+                    <li><strong>С различиями:</strong> {{ statistics.classes_with_differences or 0 }}</li>
+                    <li><strong>Event = 4:</strong> {{ statistics.classes_event_4 or 0 }}</li>
+                    <li><strong>Системных:</strong> {{ statistics.system_classes or 0 }}</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Фильтры -->
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="bi bi-funnel"></i> Фильтры</h5>
+            </div>
+            <div class="card-body">
+                <form method="GET" action="{{ url_for('groups') }}">
+                    <div class="mb-3">
+                        <label for="search" class="form-label">Поиск</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="search" 
+                               name="search" 
+                               value="{{ current_filters.search or '' }}"
+                               placeholder="Имя или заголовок группы">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="status_variance" class="form-label">Status Variance</label>
+                        <select class="form-select" id="status_variance" name="status_variance">
+                            <option value="">Все</option>
+                            <option value="0" {% if current_filters.status_variance == 0 %}selected{% endif %}>0</option>
+                            <option value="1" {% if current_filters.status_variance == 1 %}selected{% endif %}>1</option>
+                            <option value="2" {% if current_filters.status_variance == 2 %}selected{% endif %}>2</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="event" class="form-label">Event</label>
+                        <select class="form-select" id="event" name="event">
+                            <option value="">Все</option>
+                            <option value="0" {% if current_filters.event == 0 %}selected{% endif %}>0</option>
+                            <option value="1" {% if current_filters.event == 1 %}selected{% endif %}>1</option>
+                            <option value="2" {% if current_filters.event == 2 %}selected{% endif %}>2</option>
+                            <option value="3" {% if current_filters.event == 3 %}selected{% endif %}>3</option>
+                            <option value="4" {% if current_filters.event == 4 %}selected{% endif %}>4</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="per_page" class="form-label">Записей на странице</label>
+                        <select class="form-select" id="per_page" name="per_page">
+                            <option value="10" {% if request.args.get('per_page', '20') == '10' %}selected{% endif %}>10</option>
+                            <option value="20" {% if request.args.get('per_page', '20') == '20' %}selected{% endif %}>20</option>
+                            <option value="50" {% if request.args.get('per_page', '20') == '50' %}selected{% endif %}>50</option>
+                            <option value="100" {% if request.args.get('per_page', '20') == '100' %}selected{% endif %}>100</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="base_url" class="form-label">Базовый URL</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="base_url" 
+                               name="base_url" 
+                               value="{{ current_filters.base_url or '' }}"
+                               placeholder="http://10.3.0.254:22617/context">
+                        <div class="form-text">URL для ссылок на админку</div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-search"></i> Применить
+                        </button>
+                        <a href="{{ url_for('groups') }}" class="btn btn-secondary">
+                            <i class="bi bi-x"></i> Сбросить
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-9">
+        <!-- Заголовок -->
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Группы атрибутов</h1>
+            <div class="text-muted">
+                {% if result.groups %}
+                    Показано {{ result.groups|length }} из {{ result.total_count }} групп
+                {% else %}
+                    Групп не найдено
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Таблица групп -->
+        {% if result.groups %}
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Заголовок</th>
+                        <th>Имя</th>
+                        <th>Класс</th>
+                        <th>Номер</th>
+                        <th>Создан</th>
+                        <th>Редактор</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for group in result.groups %}
+                    <tr>
+                        <td>
+                            <code>{{ group.ouid }}</code>
+                        </td>
+                        <td>
+                            <strong>{{ group.title or 'Без заголовка' }}</strong>
+                        </td>
+                        <td>
+                            {{ group.name or '-' }}
+                        </td>
+                        <td>
+                            <code>{{ group.cls or '-' }}</code>
+                        </td>
+                        <td>
+                            {{ group.num or '-' }}
+                        </td>
+                        <td>
+                            {% if group.a_createdate %}
+                                <small class="text-muted">{{ group.a_createdate }}</small>
+                            {% else %}
+                                <small class="text-muted">-</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">{{ group.a_editor or '-' }}</small>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button onclick="openAdmin('{{ group.admin_url }}')" 
+                                        class="btn btn-outline-success" 
+                                        title="Открыть в админке">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Пагинация -->
+        {% if result.total_pages > 1 %}
+        <nav aria-label="Навигация по страницам">
+            <ul class="pagination justify-content-center">
+                {% if result.has_prev %}
+                <li class="page-item">
+                    <a class="page-link" 
+                       href="{{ url_for('groups', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url) }}">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+                </li>
+                {% endif %}
+                
+                {% for page_num in range(1, result.total_pages + 1) %}
+                    {% if page_num == result.current_page %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ page_num }}</span>
+                    </li>
+                    {% elif page_num == 1 or page_num == result.total_pages or (page_num >= result.current_page - 2 and page_num <= result.current_page + 2) %}
+                    <li class="page-item">
+                        <a class="page-link" 
+                           href="{{ url_for('groups', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url) }}">
+                            {{ page_num }}
+                        </a>
+                    </li>
+                    {% elif page_num == result.current_page - 3 or page_num == result.current_page + 3 %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if result.has_next %}
+                <li class="page-item">
+                    <a class="page-link" 
+                       href="{{ url_for('groups', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url) }}">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+        
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> Групп не найдено
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function openAdmin(url) {
+    window.open(url, '_blank', 'width=1200,height=800');
+}
+</script>
+{% endblock %} 
