@@ -615,8 +615,8 @@ class DataService:
             
             # Получаем парсинг различий если есть
             differences = self.get_class_differences(class_ouid)
-            group_differences = self.get_group_differences(class_ouid)
-            attribute_differences = self.get_attribute_differences(class_ouid)
+            group_differences = self.get_group_differences(class_ouid, search, status_variance, event)
+            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event)
             
             return {
                 'class': class_info,
@@ -989,8 +989,27 @@ class DataService:
         finally:
             self.db_manager.disconnect()
 
-    def get_attribute_differences(self, class_ouid: int) -> List[Dict[str, Any]]:
+    def get_attribute_differences(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None) -> List[Dict[str, Any]]:
         """Парсинг различий для атрибутов (использует SQL из отчёт по атрибутам.sql)"""
+        
+        # Построение WHERE условий для фильтрации атрибутов
+        where_conditions = [f"s.ouidsxclass = {class_ouid}"]
+        
+        if search:
+            search_escaped = search.replace("'", "''")
+            where_conditions.append(f"(s.name ILIKE '%{search_escaped}%' OR s.title ILIKE '%{search_escaped}%' OR s.description ILIKE '%{search_escaped}%')")
+            
+        if status_variance is not None:
+            where_conditions.append(f"s.a_status_variance = {status_variance}")
+        else:
+            where_conditions.append("s.A_STATUS_VARIANCE = 2")
+            
+        if event is not None:
+            where_conditions.append(f"s.a_event = {event}")
+        else:
+            where_conditions.append("s.A_EVENT = 0")
+        
+        where_clause = " AND ".join(where_conditions)
         
         differences_query = f"""
             -- Анализ различий между атрибутами источника и назначения в системе SiTex
@@ -1001,9 +1020,7 @@ class DataService:
                     s.description,
                     s.a_log
                 FROM SXATTR_SOURCE s
-                WHERE s.A_STATUS_VARIANCE = 2
-                    AND s.A_EVENT = 0
-                    AND s.ouidsxclass = {class_ouid}
+                WHERE {where_clause}
             ),
             attr_blocks AS (
                 SELECT
@@ -1012,10 +1029,13 @@ class DataService:
                     s.description,
                     trim(split_part(attr_block, E'\\n', 1)) as attribute_name,
                     COALESCE(
-                        trim(regexp_replace(
-                            substring(attr_block from 'source[[:space:]]*=[[:space:]]*([^\\n]*(?:\\n[[:space:]]+[^\\n]*)*?)(?=\\n[[:space:]]*target[[:space:]]*=|\\n[^[:space:]]|$)'),
-                            '^[[:space:]]*', '', 'g'
-                        )),
+                        trim(
+                            split_part(
+                                substring(attr_block from 'source[[:space:]]*=[[:space:]]*(.*)'),
+                                'target =',
+                                1
+                            )
+                        ),
                         ''
                     ) as source_value,
                     COALESCE(
