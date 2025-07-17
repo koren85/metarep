@@ -86,6 +86,9 @@ class DataService:
             # Преобразуем в словари
             classes_list = []
             for row in classes:
+                # Получаем OUID назначения для admin_url
+                target_ouid = self._get_target_class_ouid(row[1]) if base_url else None
+                
                 classes_list.append({
                     'ouid': row[0],
                     'name': row[1],
@@ -96,7 +99,7 @@ class DataService:
                     'editor': row[6],
                     'parent_ouid': row[7],
                     'issystem': row[8],
-                    'admin_url': self._build_admin_url(row[0], 'SXClass', base_url),
+                    'admin_url': self._build_admin_url(target_ouid or row[0], 'SXClass', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXClass', source_base_url)
                 })
             
@@ -131,33 +134,35 @@ class DataService:
         if search:
             # Экранируем кавычки для безопасности
             search_escaped = search.replace("'", "''")
-            where_conditions.append(f"(name ILIKE '%{search_escaped}%' OR title ILIKE '%{search_escaped}%')")
+            where_conditions.append(f"(g.name ILIKE '%{search_escaped}%' OR g.title ILIKE '%{search_escaped}%')")
             
         if status_variance is not None:
-            where_conditions.append(f"a_status_variance = {status_variance}")
+            where_conditions.append(f"g.a_status_variance = {status_variance}")
             
         if event is not None:
-            where_conditions.append(f"a_event = {event}")
+            where_conditions.append(f"g.a_event = {event}")
             
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
         # Общее количество записей
         count_query = f"""
             SELECT COUNT(*) 
-            FROM sxattr_grp_source 
+            FROM sxattr_grp_source g
+            LEFT JOIN sxclass_source c ON c.ouid = g.cls
             WHERE {where_clause}
         """
         
         # Основной запрос с пагинацией
         offset = (page - 1) * per_page
         main_query = f"""
-            SELECT ouid, title, name, cls, num, forservice, icon, a_parent,
-                   a_width, a_height, a_viewtype, systemclass, guid, ts,
-                   a_issystem, cr_owner, a_createdate, a_editor, a_link_target,
-                   a_log, a_event, a_status_variance
-            FROM sxattr_grp_source 
+            SELECT g.ouid, g.title, g.name, g.cls, g.num, g.forservice, g.icon, g.a_parent,
+                   g.a_width, g.a_height, g.a_viewtype, g.systemclass, g.guid, g.ts,
+                   g.a_issystem, g.cr_owner, g.a_createdate, g.a_editor, g.a_link_target,
+                   g.a_log, g.a_event, g.a_status_variance, c.name as class_name
+            FROM sxattr_grp_source g
+            LEFT JOIN sxclass_source c ON c.ouid = g.cls 
             WHERE {where_clause}
-            ORDER BY title, name
+            ORDER BY g.title, g.name
             LIMIT {per_page} OFFSET {offset}
         """
         
@@ -174,6 +179,9 @@ class DataService:
             # Преобразуем в словари
             groups_list = []
             for row in groups:
+                # Получаем OUID группы назначения для admin_url
+                target_ouid = self._get_target_group_ouid(row[22], row[2]) if base_url and row[22] else None
+                
                 groups_list.append({
                     'ouid': row[0],
                     'title': row[1],
@@ -197,7 +205,8 @@ class DataService:
                     'a_log': row[19],
                     'a_event': row[20],
                     'a_status_variance': row[21],
-                    'admin_url': self._build_admin_url(row[0], 'SXAttrGrp', base_url),
+                    'class_name': row[22],
+                    'admin_url': self._build_admin_url(target_ouid or row[0], 'SXAttrGrp', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXAttrGrp', source_base_url)
                 })
             
@@ -247,6 +256,7 @@ class DataService:
             SELECT COUNT(*) 
             FROM sxattr_source a
             LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
+            LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
             WHERE {where_clause}
         """
         
@@ -267,9 +277,11 @@ class DataService:
                    a.a_mask, a.a_isdiffbranch, a.a_disabledublicate, a.a_isactualize,
                    a.columnfilter, a.a_objcrit, a.systemclass, a.guid, a.ts, a.a_issystem,
                    a.cr_owner, a.a_createdate, a.a_editor, a.a_link_target, a.a_log,
-                   a.a_event, a.a_status_variance, a.ouidsxclass, d.description as datatype_name
+                   a.a_event, a.a_status_variance, a.ouidsxclass, d.description as datatype_name,
+                   c.name as class_name
             FROM sxattr_source a
             LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
+            LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
             WHERE {where_clause}
             ORDER BY a.title, a.name
             LIMIT {per_page} OFFSET {offset}
@@ -288,6 +300,9 @@ class DataService:
             # Преобразуем в словари
             attributes_list = []
             for row in attributes:
+                # Получаем OUID атрибута назначения для admin_url
+                target_ouid = self._get_target_attribute_ouid(row[81], row[1]) if base_url and row[81] else None
+                
                 attributes_list.append({
                     'ouid': row[0],
                     'name': row[1],
@@ -370,7 +385,8 @@ class DataService:
                     'a_status_variance': row[78],
                     'ouidsxclass': row[79],
                     'datatype_name': row[80],
-                    'admin_url': self._build_admin_url(row[0], 'SXAttr', base_url),
+                    'class_name': row[81],
+                    'admin_url': self._build_admin_url(target_ouid or row[0], 'SXAttr', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url)
                 })
             
@@ -413,28 +429,29 @@ class DataService:
         """
         
         # Группы атрибутов
-        groups_where_conditions = [f"cls = {class_ouid}"]
+        groups_where_conditions = [f"g.cls = {class_ouid}"]
         
         if search:
             search_escaped = search.replace("'", "''")
-            groups_where_conditions.append(f"(name ILIKE '%{search_escaped}%' OR title ILIKE '%{search_escaped}%')")
+            groups_where_conditions.append(f"(g.name ILIKE '%{search_escaped}%' OR g.title ILIKE '%{search_escaped}%')")
             
         if status_variance is not None:
-            groups_where_conditions.append(f"a_status_variance = {status_variance}")
+            groups_where_conditions.append(f"g.a_status_variance = {status_variance}")
             
         if event is not None:
-            groups_where_conditions.append(f"a_event = {event}")
+            groups_where_conditions.append(f"g.a_event = {event}")
             
         groups_where_clause = " AND ".join(groups_where_conditions)
         
         groups_query = f"""
-            SELECT ouid, title, name, cls, num, forservice, icon, a_parent,
-                   a_width, a_height, a_viewtype, systemclass, guid, ts,
-                   a_issystem, cr_owner, a_createdate, a_editor, a_link_target,
-                   a_log, a_event, a_status_variance
-            FROM sxattr_grp_source 
+            SELECT g.ouid, g.title, g.name, g.cls, g.num, g.forservice, g.icon, g.a_parent,
+                   g.a_width, g.a_height, g.a_viewtype, g.systemclass, g.guid, g.ts,
+                   g.a_issystem, g.cr_owner, g.a_createdate, g.a_editor, g.a_link_target,
+                   g.a_log, g.a_event, g.a_status_variance, c.name as class_name
+            FROM sxattr_grp_source g
+            LEFT JOIN sxclass_source c ON c.ouid = g.cls
             WHERE {groups_where_clause}
-            ORDER BY num, title
+            ORDER BY g.num, g.title
         """
         
         # Атрибуты
@@ -467,9 +484,11 @@ class DataService:
                    a.a_mask, a.a_isdiffbranch, a.a_disabledublicate, a.a_isactualize,
                    a.columnfilter, a.a_objcrit, a.systemclass, a.guid, a.ts, a.a_issystem,
                    a.cr_owner, a.a_createdate, a.a_editor, a.a_link_target, a.a_log,
-                   a.a_event, a.a_status_variance, d.description as datatype_name
+                   a.a_event, a.a_status_variance, d.description as datatype_name, 
+                   c.name as class_name
             FROM sxattr_source a
             LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
+            LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
             WHERE {attrs_where_clause}
             ORDER BY a.num, a.title
         """
@@ -550,7 +569,8 @@ class DataService:
                     'a_log': row[19],
                     'a_event': row[20],
                     'a_status_variance': row[21],
-                    'admin_url': self._build_admin_url(row[0], 'SXAttrGrp', base_url),
+                    'class_name': row[22],
+                    'admin_url': self._build_admin_url(self._get_target_group_ouid(row[22], row[2]) or row[0], 'SXAttrGrp', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXAttrGrp', source_base_url)
                 })
             
@@ -639,7 +659,8 @@ class DataService:
                     'a_event': row[77],
                     'a_status_variance': row[78],
                     'datatype_name': row[79],
-                    'admin_url': self._build_admin_url(row[0], 'SXAttr', base_url),
+                    'class_name': row[80],
+                    'admin_url': self._build_admin_url(self._get_target_attribute_ouid(row[80], row[1]) or row[0], 'SXAttr', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url)
                 })
             
@@ -1212,6 +1233,56 @@ class DataService:
         """Построение URL для админки"""
         url = base_url if base_url else self.base_url
         return f"{url}/admin/edit.htm?id={ouid}@{object_type}"
+    
+    def _get_target_class_ouid(self, class_name: str) -> int:
+        """Получение OUID класса назначения по имени"""
+        query = "SELECT ouid FROM sxclass WHERE name = %s"
+        try:
+            if not self.db_manager.connect():
+                return None
+            result = self.db_manager.execute_query(query, [class_name])
+            return result[0][0] if result else None
+        except Exception as e:
+            print(f"Ошибка получения OUID класса назначения: {e}")
+            return None
+        finally:
+            self.db_manager.disconnect()
+    
+    def _get_target_attribute_ouid(self, class_name: str, attr_name: str) -> int:
+        """Получение OUID атрибута назначения по имени класса и атрибута"""
+        query = """
+            SELECT a.ouid FROM sxattr a
+            JOIN sxclass c ON c.ouid = a.ouidsxclass
+            WHERE c.name = %s AND a.name = %s
+        """
+        try:
+            if not self.db_manager.connect():
+                return None
+            result = self.db_manager.execute_query(query, [class_name, attr_name])
+            return result[0][0] if result else None
+        except Exception as e:
+            print(f"Ошибка получения OUID атрибута назначения: {e}")
+            return None
+        finally:
+            self.db_manager.disconnect()
+    
+    def _get_target_group_ouid(self, class_name: str, group_name: str) -> int:
+        """Получение OUID группы назначения по имени класса и группы"""
+        query = """
+            SELECT g.ouid FROM sxattr_grp g
+            JOIN sxclass c ON c.ouid = g.cls
+            WHERE c.name = %s AND g.name = %s
+        """
+        try:
+            if not self.db_manager.connect():
+                return None
+            result = self.db_manager.execute_query(query, [class_name, group_name])
+            return result[0][0] if result else None
+        except Exception as e:
+            print(f"Ошибка получения OUID группы назначения: {e}")
+            return None
+        finally:
+            self.db_manager.disconnect()
     
     def _get_difference_type(self, source_value: str, target_value: str) -> str:
         """Определение типа различия"""
