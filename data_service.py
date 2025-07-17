@@ -35,7 +35,8 @@ class DataService:
     
     def get_classes(self, page: int = 1, per_page: int = 20, 
                    search: str = None, status_variance: int = None, 
-                   event: int = None, base_url: str = None) -> Dict[str, Any]:
+                   event: int = None, base_url: str = None, 
+                   source_base_url: str = None) -> Dict[str, Any]:
         """Получение списка классов с фильтрацией и пагинацией"""
         
         # Базовый запрос
@@ -95,7 +96,8 @@ class DataService:
                     'editor': row[6],
                     'parent_ouid': row[7],
                     'issystem': row[8],
-                    'admin_url': self._build_admin_url(row[0], 'SXClass', base_url)
+                    'admin_url': self._build_admin_url(row[0], 'SXClass', base_url),
+                    'source_admin_url': self._build_admin_url(row[0], 'SXClass', source_base_url)
                 })
             
             # Убеждаемся что per_page тоже число
@@ -119,7 +121,8 @@ class DataService:
     
     def get_groups(self, page: int = 1, per_page: int = 20, 
                    search: str = None, status_variance: int = None, 
-                   event: int = None, base_url: str = None) -> Dict[str, Any]:
+                   event: int = None, base_url: str = None,
+                   source_base_url: str = None) -> Dict[str, Any]:
         """Получение списка групп атрибутов с фильтрацией и пагинацией"""
         
         # Базовый запрос
@@ -194,7 +197,8 @@ class DataService:
                     'a_log': row[19],
                     'a_event': row[20],
                     'a_status_variance': row[21],
-                    'admin_url': self._build_admin_url(row[0], 'SXAttrGrp', base_url)
+                    'admin_url': self._build_admin_url(row[0], 'SXAttrGrp', base_url),
+                    'source_admin_url': self._build_admin_url(row[0], 'SXAttrGrp', source_base_url)
                 })
             
             # Убеждаемся что per_page тоже число
@@ -217,8 +221,9 @@ class DataService:
             self.db_manager.disconnect()
     
     def get_attributes(self, page: int = 1, per_page: int = 20, 
-                       search: str = None, status_variance: int = None, 
-                       event: int = None, base_url: str = None) -> Dict[str, Any]:
+                      search: str = None, status_variance: int = None, 
+                      event: int = None, base_url: str = None,
+                      source_base_url: str = None) -> Dict[str, Any]:
         """Получение списка атрибутов с фильтрацией и пагинацией"""
         
         # Базовый запрос
@@ -365,7 +370,8 @@ class DataService:
                     'a_status_variance': row[78],
                     'ouidsxclass': row[79],
                     'datatype_name': row[80],
-                    'admin_url': self._build_admin_url(row[0], 'SXAttr', base_url)
+                    'admin_url': self._build_admin_url(row[0], 'SXAttr', base_url),
+                    'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url)
                 })
             
             # Убеждаемся что per_page тоже число
@@ -388,6 +394,7 @@ class DataService:
             self.db_manager.disconnect()
     
     def get_class_details(self, class_ouid: int, base_url: str = None, 
+                         source_base_url: str = None,
                          search: str = None, status_variance: int = None, 
                          event: int = None) -> Dict[str, Any]:
         """Получение детальной информации о классе"""
@@ -512,7 +519,8 @@ class DataService:
                 'a_log': class_row[31],
                 'a_event': class_row[32],
                 'a_status_variance': class_row[33],
-                'admin_url': self._build_admin_url(class_row[0], 'SXClass', base_url)
+                'admin_url': self._build_admin_url(class_row[0], 'SXClass', base_url),
+                'source_admin_url': self._build_admin_url(class_row[0], 'SXClass', source_base_url)
             }
             
             # Получаем группы атрибутов
@@ -542,7 +550,8 @@ class DataService:
                     'a_log': row[19],
                     'a_event': row[20],
                     'a_status_variance': row[21],
-                    'admin_url': self._build_admin_url(row[0], 'SXAttrGrp', base_url)
+                    'admin_url': self._build_admin_url(row[0], 'SXAttrGrp', base_url),
+                    'source_admin_url': self._build_admin_url(row[0], 'SXAttrGrp', source_base_url)
                 })
             
             # Получаем атрибуты
@@ -630,13 +639,14 @@ class DataService:
                     'a_event': row[77],
                     'a_status_variance': row[78],
                     'datatype_name': row[79],
-                    'admin_url': self._build_admin_url(row[0], 'SXAttr', base_url)
+                    'admin_url': self._build_admin_url(row[0], 'SXAttr', base_url),
+                    'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url)
                 })
             
             # Получаем парсинг различий если есть
-            differences = self.get_class_differences(class_ouid)
-            group_differences = self.get_group_differences(class_ouid, search, status_variance, event)
-            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event)
+            differences = self.get_class_differences(class_ouid, base_url, source_base_url)
+            group_differences = self.get_group_differences(class_ouid, search, status_variance, event, base_url, source_base_url)
+            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event, base_url, source_base_url)
             
             return {
                 'class': class_info,
@@ -664,7 +674,8 @@ class DataService:
         finally:
             self.db_manager.disconnect()
     
-    def get_class_differences(self, class_ouid: int, skip_disconnect: bool = False) -> List[Dict[str, Any]]:
+    def get_class_differences(self, class_ouid: int, base_url: str = None, 
+                             source_base_url: str = None, skip_disconnect: bool = False) -> List[Dict[str, Any]]:
         """Парсинг различий для класса (использует SQL из отчёт по классам.sql)"""
         
         differences_query = f"""
@@ -824,7 +835,9 @@ class DataService:
                     'exception_action': exception_action,
                     'exception_action_name': self._get_action_name(exception_action),
                     'should_ignore': exception_action == 0,
-                    'should_update': exception_action == 2
+                    'should_update': exception_action == 2,
+                    'admin_url': self._build_admin_url(row[0], 'SXClass', base_url),
+                    'source_admin_url': self._build_admin_url(row[0], 'SXClass', source_base_url)
                 })
             
             return differences
@@ -836,7 +849,9 @@ class DataService:
             if not skip_disconnect:
                 self.db_manager.disconnect()
     
-    def get_group_differences(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None, skip_disconnect: bool = False) -> List[Dict[str, Any]]:
+    def get_group_differences(self, class_ouid: int, search: str = None, status_variance: int = None, 
+                             event: int = None, base_url: str = None, source_base_url: str = None, 
+                             skip_disconnect: bool = False) -> List[Dict[str, Any]]:
         """Парсинг различий для групп атрибутов (использует SQL из отчёт по группам.sql)"""
         
         # Построение WHERE условий для фильтрации групп
@@ -1015,7 +1030,9 @@ class DataService:
                     'exception_action': exception_action,
                     'exception_action_name': self._get_action_name(exception_action),
                     'should_ignore': exception_action == 0,
-                    'should_update': exception_action == 2
+                    'should_update': exception_action == 2,
+                    'admin_url': self._build_admin_url(row[0], 'SXAttrGrp', base_url),
+                    'source_admin_url': self._build_admin_url(row[0], 'SXAttrGrp', source_base_url)
                 })
             
             return differences
@@ -1027,7 +1044,9 @@ class DataService:
             if not skip_disconnect:
                 self.db_manager.disconnect()
 
-    def get_attribute_differences(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None, skip_disconnect: bool = False) -> List[Dict[str, Any]]:
+    def get_attribute_differences(self, class_ouid: int, search: str = None, status_variance: int = None, 
+                             event: int = None, base_url: str = None, source_base_url: str = None, 
+                             skip_disconnect: bool = False) -> List[Dict[str, Any]]:
         """Парсинг различий для атрибутов (использует SQL из отчёт по атрибутам.sql)"""
         
         print(f"[DEBUG] get_attribute_differences вызван с: class_ouid={class_ouid}, search='{search}', status_variance={status_variance}, event={event}")
@@ -1142,7 +1161,9 @@ class DataService:
                     'exception_action': exception_action,
                     'exception_action_name': self._get_action_name(exception_action),
                     'should_ignore': exception_action == 0,
-                    'should_update': exception_action == 2
+                    'should_update': exception_action == 2,
+                    'admin_url': self._build_admin_url(row[0], 'SXAttr', base_url),
+                    'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url)
                 })
             
             return differences
@@ -1589,11 +1610,11 @@ class DataService:
             
             # Получаем все различия для класса с теми же фильтрами, что и на странице
             print(f"[DEBUG] Вызов get_class_differences({class_ouid}) - без фильтров")
-            class_differences = self.get_class_differences(class_ouid)
+            class_differences = self.get_class_differences(class_ouid, None, None, skip_disconnect=True)
             print(f"[DEBUG] Вызов get_group_differences({class_ouid}, {search}, {status_variance}, {event})")
-            group_differences = self.get_group_differences(class_ouid, search, status_variance, event) 
+            group_differences = self.get_group_differences(class_ouid, search, status_variance, event, None, None, skip_disconnect=True) 
             print(f"[DEBUG] Вызов get_attribute_differences({class_ouid}, {search}, {status_variance}, {event})")
-            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event)
+            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event, None, None, skip_disconnect=True)
             
             # Отладка: показываем все уникальные свойства в различиях
             self._debug_unique_properties(attribute_differences)
@@ -1966,15 +1987,15 @@ class DataService:
             
             # Получаем различия с действиями используя основные функции с флагом skip_disconnect
             print(f"[DEBUG] Получение различий классов...")
-            class_differences = self.get_class_differences(class_ouid, skip_disconnect=True)
+            class_differences = self.get_class_differences(class_ouid, None, None, skip_disconnect=True)
             print(f"[DEBUG] Различий классов: {len(class_differences)}")
             
             print(f"[DEBUG] Получение различий групп...")
-            group_differences = self.get_group_differences(class_ouid, search, status_variance, event, skip_disconnect=True)
+            group_differences = self.get_group_differences(class_ouid, search, status_variance, event, None, None, skip_disconnect=True)
             print(f"[DEBUG] Различий групп: {len(group_differences)}")
             
             print(f"[DEBUG] Получение различий атрибутов...")
-            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event, skip_disconnect=True)
+            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event, None, None, skip_disconnect=True)
             print(f"[DEBUG] Различий атрибутов: {len(attribute_differences)}")
             
             # Проверяем connection перед использованием

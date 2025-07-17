@@ -37,6 +37,7 @@ def index():
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
     base_url = request.args.get('base_url', '')
+    source_base_url = request.args.get('source_base_url', '')
     
     # Проверяем корректность значений
     if page < 1:
@@ -51,7 +52,8 @@ def index():
         search=search if search else None,
         status_variance=status_variance,
         event=event,
-        base_url=base_url if base_url else None
+        base_url=base_url if base_url else None,
+        source_base_url=source_base_url if source_base_url else None
     )
     
     # Получаем статистику
@@ -64,7 +66,8 @@ def index():
                              'search': search,
                              'status_variance': status_variance,
                              'event': event,
-                             'base_url': base_url
+                             'base_url': base_url,
+                             'source_base_url': source_base_url
                          })
 
 @app.route('/groups')
@@ -78,6 +81,7 @@ def groups():
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
     base_url = request.args.get('base_url', '')
+    source_base_url = request.args.get('source_base_url', '')
     
     # Проверяем корректность значений
     if page < 1:
@@ -92,7 +96,8 @@ def groups():
         search=search if search else None,
         status_variance=status_variance,
         event=event,
-        base_url=base_url if base_url else None
+        base_url=base_url if base_url else None,
+        source_base_url=source_base_url if source_base_url else None
     )
     
     # Получаем статистику
@@ -105,7 +110,8 @@ def groups():
                              'search': search,
                              'status_variance': status_variance,
                              'event': event,
-                             'base_url': base_url
+                             'base_url': base_url,
+                             'source_base_url': source_base_url
                          })
 
 @app.route('/attributes')
@@ -119,6 +125,7 @@ def attributes():
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
     base_url = request.args.get('base_url', '')
+    source_base_url = request.args.get('source_base_url', '')
     
     # Проверяем корректность значений
     if page < 1:
@@ -133,7 +140,8 @@ def attributes():
         search=search if search else None,
         status_variance=status_variance,
         event=event,
-        base_url=base_url if base_url else None
+        base_url=base_url if base_url else None,
+        source_base_url=source_base_url if source_base_url else None
     )
     
     # Получаем статистику
@@ -146,7 +154,8 @@ def attributes():
                              'search': search,
                              'status_variance': status_variance,
                              'event': event,
-                             'base_url': base_url
+                             'base_url': base_url,
+                             'source_base_url': source_base_url
                          })
 
 @app.route('/class/<int:class_ouid>')
@@ -154,6 +163,7 @@ def class_detail(class_ouid):
     """Детальная страница класса"""
     
     base_url = request.args.get('base_url', '')
+    source_base_url = request.args.get('source_base_url', '')
     search = request.args.get('search', '')
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
@@ -161,6 +171,7 @@ def class_detail(class_ouid):
     result = data_service.get_class_details(
         class_ouid, 
         base_url if base_url else None,
+        source_base_url if source_base_url else None,
         search if search else None,
         status_variance,
         event
@@ -174,7 +185,8 @@ def class_detail(class_ouid):
         'search': search,
         'status_variance': status_variance,
         'event': event,
-        'base_url': base_url
+        'base_url': base_url,
+        'source_base_url': source_base_url
     }
     
     return render_template('class_detail.html', data=result)
@@ -493,7 +505,7 @@ if __name__ == '__main__':
     print(f"🔗 Базовый URL админки: {config.sitex_context_url}")
     
     # Конфигурация из переменных окружения
-    port = int(os.getenv('PORT', 5000))
+    port = int(os.getenv('PORT', 5001))
     debug = os.getenv('FLASK_DEBUG', 'false').lower() in ('true', '1', 'yes')
     
     app.run(debug=debug, host='0.0.0.0', port=port) 

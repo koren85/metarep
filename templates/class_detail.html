@@ -6,7 +6,7 @@
 <div class="mb-4">
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{ url_for('index', search=data.current_filters.search, status_variance=data.current_filters.status_variance, event=data.current_filters.event, base_url=data.current_filters.base_url) }}">Классы</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('index', search=data.current_filters.search, status_variance=data.current_filters.status_variance, event=data.current_filters.event, base_url=data.current_filters.base_url, source_base_url=data.current_filters.source_base_url) }}">Классы</a></li>
             <li class="breadcrumb-item active">{{ data.class.name or 'Класс ' + data.class.ouid|string }}</li>
         </ol>
     </nav>
@@ -126,14 +126,25 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label for="base_url" class="form-label">Базовый URL</label>
+                        <label for="base_url" class="form-label">Базовый URL назначения</label>
                         <input type="text" 
                                class="form-control" 
                                id="base_url" 
                                name="base_url" 
                                value="{{ data.current_filters.base_url or '' }}"
                                placeholder="http://10.3.0.254:22617/context">
-                        <div class="form-text">URL для ссылок на админку</div>
+                        <div class="form-text">URL для ссылок на админку назначения</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="source_base_url" class="form-label">Базовый URL источника</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="source_base_url" 
+                               name="source_base_url" 
+                               value="{{ data.current_filters.source_base_url or '' }}"
+                               placeholder="http://10.3.0.253:22617/context">
+                        <div class="form-text">URL для ссылок на админку источника</div>
                     </div>
                     
                     <div class="d-grid gap-2">
@@ -364,11 +375,18 @@
                                         </span>
                                     </td>
                                     <td>
-                                        <button onclick="openAdmin('{{ group.admin_url }}')" 
-                                                class="btn btn-outline-secondary btn-sm" 
-                                                title="Открыть в админке">
-                                            <i class="bi bi-box-arrow-up-right"></i>
-                                        </button>
+                                        <div class="btn-group btn-group-sm">
+                                            <button onclick="openAdmin('{{ group.source_admin_url }}')" 
+                                                    class="btn btn-outline-info btn-sm" 
+                                                    title="Открыть в админке источника">
+                                                <i class="bi bi-arrow-up-left"></i>
+                                            </button>
+                                            <button onclick="openAdmin('{{ group.admin_url }}')" 
+                                                    class="btn btn-outline-success btn-sm" 
+                                                    title="Открыть в админке назначения">
+                                                <i class="bi bi-arrow-up-right"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -435,11 +453,18 @@
                                         </span>
                                     </td>
                                     <td>
-                                        <button onclick="openAdmin('{{ attr.admin_url }}')" 
-                                                class="btn btn-outline-secondary btn-sm" 
-                                                title="Открыть в админке">
-                                            <i class="bi bi-box-arrow-up-right"></i>
-                                        </button>
+                                        <div class="btn-group btn-group-sm">
+                                            <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
+                                                    class="btn btn-outline-info btn-sm" 
+                                                    title="Открыть в админке источника">
+                                                <i class="bi bi-arrow-up-left"></i>
+                                            </button>
+                                            <button onclick="openAdmin('{{ attr.admin_url }}')" 
+                                                    class="btn btn-outline-success btn-sm" 
+                                                    title="Открыть в админке назначения">
+                                                <i class="bi bi-arrow-up-right"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -468,9 +493,9 @@
                                 <th>Атрибут</th>
                                 <th>Source</th>
                                 <th>Target</th>
-                                <th>Тип различия</th>
                                 <th>Действие</th>
                                 <th>Управление</th>
+                                <th>Админка</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -486,11 +511,6 @@
                                     <div class="difference-text" title="{{ diff.target_value }}">
                                         {{ diff.target_value or 'Пусто' }}
                                     </div>
-                                </td>
-                                <td>
-                                    <span class="badge {% if diff.difference_type == 'Добавлено в target' %}bg-success{% elif diff.difference_type == 'Удалено из target' %}bg-danger{% else %}bg-warning{% endif %}">
-                                        {{ diff.difference_type }}
-                                    </span>
                                 </td>
                                 <td>
                                     <span class="badge {% if diff.should_ignore %}bg-secondary{% elif diff.should_update %}bg-info{% else %}bg-light text-dark{% endif %}">
@@ -509,6 +529,20 @@
                                            title="Управление исключениями">
                                             <i class="bi bi-gear"></i>
                                         </a>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button onclick="openAdmin('{{ diff.source_admin_url }}')" 
+                                                class="btn btn-outline-info btn-sm" 
+                                                title="Открыть в админке источника">
+                                            <i class="bi bi-arrow-up-left"></i>
+                                        </button>
+                                        <button onclick="openAdmin('{{ diff.admin_url }}')" 
+                                                class="btn btn-outline-success btn-sm" 
+                                                title="Открыть в админке назначения">
+                                            <i class="bi bi-arrow-up-right"></i>
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -536,9 +570,9 @@
                                 <th>Атрибут</th>
                                 <th>Source</th>
                                 <th>Target</th>
-                                <th>Тип различия</th>
                                 <th>Действие</th>
                                 <th>Управление</th>
+                                <th>Админка</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -561,11 +595,6 @@
                                     </div>
                                 </td>
                                 <td>
-                                    <span class="badge {% if diff.difference_type == 'Добавлено в target' %}bg-success{% elif diff.difference_type == 'Удалено из target' %}bg-danger{% else %}bg-warning{% endif %}">
-                                        {{ diff.difference_type }}
-                                    </span>
-                                </td>
-                                <td>
                                     <span class="badge {% if diff.should_ignore %}bg-secondary{% elif diff.should_update %}bg-info{% else %}bg-light text-dark{% endif %}">
                                         {{ diff.exception_action_name or 'Не настроено' }}
                                     </span>
@@ -582,6 +611,20 @@
                                            title="Управление исключениями">
                                             <i class="bi bi-gear"></i>
                                         </a>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button onclick="openAdmin('{{ diff.source_admin_url }}')" 
+                                                class="btn btn-outline-info btn-sm" 
+                                                title="Открыть в админке источника">
+                                            <i class="bi bi-arrow-up-left"></i>
+                                        </button>
+                                        <button onclick="openAdmin('{{ diff.admin_url }}')" 
+                                                class="btn btn-outline-success btn-sm" 
+                                                title="Открыть в админке назначения">
+                                            <i class="bi bi-arrow-up-right"></i>
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -609,9 +652,9 @@
                                 <th>Свойство</th>
                                 <th>Source</th>
                                 <th>Target</th>
-                                <th>Тип различия</th>
                                 <th>Действие</th>
                                 <th>Управление</th>
+                                <th>Админка</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -634,11 +677,6 @@
                                     </div>
                                 </td>
                                 <td>
-                                    <span class="badge {% if diff.difference_type == 'Добавлено в target' %}bg-success{% elif diff.difference_type == 'Удалено из target' %}bg-danger{% else %}bg-warning{% endif %}">
-                                        {{ diff.difference_type }}
-                                    </span>
-                                </td>
-                                <td>
                                     <span class="badge {% if diff.should_ignore %}bg-secondary{% elif diff.should_update %}bg-info{% else %}bg-light text-dark{% endif %}">
                                         {{ diff.exception_action_name or 'Не настроено' }}
                                     </span>
@@ -657,6 +695,20 @@
                                         </a>
                                     </div>
                                 </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button onclick="openAdmin('{{ diff.source_admin_url }}')" 
+                                                class="btn btn-outline-info btn-sm" 
+                                                title="Открыть в админке источника">
+                                            <i class="bi bi-arrow-up-left"></i>
+                                        </button>
+                                        <button onclick="openAdmin('{{ diff.admin_url }}')" 
+                                                class="btn btn-outline-success btn-sm" 
+                                                title="Открыть в админке назначения">
+                                            <i class="bi bi-arrow-up-right"></i>
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -669,18 +721,7 @@
 </div>
 
 <!-- Toast для уведомлений -->
-<div class="toast-container position-fixed bottom-0 end-0 p-3">
-    <div id="copyToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-        <div class="toast-header">
-            <i class="bi bi-clipboard-check text-success"></i>
-            <strong class="me-auto">Скопировано</strong>
-            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
-        </div>
-        <div class="toast-body">
-            Текст скопирован в буфер обмена!
-        </div>
-    </div>
-</div>
+
 {% endblock %}
 
 {% block scripts %}

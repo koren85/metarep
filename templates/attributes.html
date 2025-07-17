@@ -70,14 +70,25 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label for="base_url" class="form-label">Базовый URL</label>
+                        <label for="base_url" class="form-label">Базовый URL назначения</label>
                         <input type="text" 
                                class="form-control" 
                                id="base_url" 
                                name="base_url" 
                                value="{{ current_filters.base_url or '' }}"
                                placeholder="http://10.3.0.254:22617/context">
-                        <div class="form-text">URL для ссылок на админку</div>
+                        <div class="form-text">URL для ссылок на админку назначения</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="source_base_url" class="form-label">Базовый URL источника</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="source_base_url" 
+                               name="source_base_url" 
+                               value="{{ current_filters.source_base_url or '' }}"
+                               placeholder="http://10.3.0.253:22617/context">
+                        <div class="form-text">URL для ссылок на админку источника</div>
                     </div>
                     
                     <div class="d-grid gap-2">
@@ -156,10 +167,15 @@
                         </td>
                         <td>
                             <div class="btn-group btn-group-sm">
+                                <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
+                                        class="btn btn-outline-info" 
+                                        title="Открыть в админке источника">
+                                    <i class="bi bi-arrow-up-left"></i>
+                                </button>
                                 <button onclick="openAdmin('{{ attr.admin_url }}')" 
                                         class="btn btn-outline-success" 
-                                        title="Открыть в админке">
-                                    <i class="bi bi-box-arrow-up-right"></i>
+                                        title="Открыть в админке назначения">
+                                    <i class="bi bi-arrow-up-right"></i>
                                 </button>
                             </div>
                         </td>
@@ -176,7 +192,7 @@
                 {% if result.has_prev %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('attributes', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url) }}">
+                       href="{{ url_for('attributes', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
                         <i class="bi bi-chevron-left"></i>
                     </a>
                 </li>
@@ -190,7 +206,7 @@
                     {% elif page_num == 1 or page_num == result.total_pages or (page_num >= result.current_page - 2 and page_num <= result.current_page + 2) %}
                     <li class="page-item">
                         <a class="page-link" 
-                           href="{{ url_for('attributes', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url) }}">
+                           href="{{ url_for('attributes', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
                             {{ page_num }}
                         </a>
                     </li>
@@ -204,7 +220,7 @@
                 {% if result.has_next %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('attributes', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url) }}">
+                       href="{{ url_for('attributes', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
                         <i class="bi bi-chevron-right"></i>
                     </a>
                 </li>

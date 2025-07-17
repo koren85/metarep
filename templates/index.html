@@ -70,14 +70,25 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label for="base_url" class="form-label">Базовый URL</label>
+                        <label for="base_url" class="form-label">Базовый URL назначения</label>
                         <input type="text" 
                                class="form-control" 
                                id="base_url" 
                                name="base_url" 
                                value="{{ current_filters.base_url or '' }}"
                                placeholder="http://10.3.0.254:22617/context">
-                        <div class="form-text">URL для ссылок на админку</div>
+                        <div class="form-text">URL для ссылок на админку назначения</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="source_base_url" class="form-label">Базовый URL источника</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="source_base_url" 
+                               name="source_base_url" 
+                               value="{{ current_filters.source_base_url or '' }}"
+                               placeholder="http://10.3.0.253:22617/context">
+                        <div class="form-text">URL для ссылок на админку источника</div>
                     </div>
                     
                     <div class="d-grid gap-2">
@@ -167,15 +178,20 @@
                             </td>
                             <td>
                                 <div class="btn-group btn-group-sm">
-                                    <a href="{{ url_for('class_detail', class_ouid=class.ouid, base_url=current_filters.base_url) }}" 
+                                    <a href="{{ url_for('class_detail', class_ouid=class.ouid, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}" 
                                        class="btn btn-outline-primary" 
                                        title="Подробности">
                                         <i class="bi bi-eye"></i>
                                     </a>
+                                    <button onclick="openAdmin('{{ class.source_admin_url }}')" 
+                                            class="btn btn-outline-info" 
+                                            title="Открыть в админке источника">
+                                        <i class="bi bi-arrow-up-left"></i>
+                                    </button>
                                     <button onclick="openAdmin('{{ class.admin_url }}')" 
-                                            class="btn btn-outline-secondary" 
-                                            title="Открыть в админке">
-                                        <i class="bi bi-box-arrow-up-right"></i>
+                                            class="btn btn-outline-success" 
+                                            title="Открыть в админке назначения">
+                                        <i class="bi bi-arrow-up-right"></i>
                                     </button>
                                 </div>
                             </td>
@@ -195,6 +211,8 @@
                                                          search=current_filters.search, 
                                                          status_variance=current_filters.status_variance,
                                                          event=current_filters.event,
+                                                         base_url=current_filters.base_url,
+                                                         source_base_url=current_filters.source_base_url,
                                                          per_page=request.args.get('per_page', 20)) }}">
                                 <i class="bi bi-chevron-left"></i> Предыдущая
                             </a>
@@ -216,6 +234,8 @@
                                                              search=current_filters.search, 
                                                              status_variance=current_filters.status_variance,
                                                              event=current_filters.event,
+                                                             base_url=current_filters.base_url,
+                                                             source_base_url=current_filters.source_base_url,
                                                              per_page=request.args.get('per_page', 20)) }}">
                                     {{ page_num }}
                                 </a>
@@ -226,6 +246,8 @@
                                                              search=current_filters.search, 
                                                              status_variance=current_filters.status_variance,
                                                              event=current_filters.event,
+                                                             base_url=current_filters.base_url,
+                                                             source_base_url=current_filters.source_base_url,
                                                              per_page=request.args.get('per_page', 20)) }}">
                                     {{ page_num }}
                                 </a>
@@ -243,6 +265,8 @@
                                                          search=current_filters.search, 
                                                          status_variance=current_filters.status_variance,
                                                          event=current_filters.event,
+                                                         base_url=current_filters.base_url,
+                                                         source_base_url=current_filters.source_base_url,
                                                          per_page=request.args.get('per_page', 20)) }}">
                                 Следующая <i class="bi bi-chevron-right"></i>
                             </a>
