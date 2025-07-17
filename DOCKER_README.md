@@ -1,4 +1,4 @@
-# Docker развертывание MetaRep
+# Docker развертывание MetaRepу
 
 ## Быстрый старт
 
