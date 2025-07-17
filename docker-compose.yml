@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  metarep:
+    build: .
+    container_name: metarep-prod
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - FLASK_DEBUG=false
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./migration_output:/app/migration_output
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s 

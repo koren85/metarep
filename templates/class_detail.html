@@ -68,6 +68,24 @@
             </div>
         </div>
         
+        <!-- Управление действиями -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="bi bi-gear"></i> Управление действиями</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-info btn-sm" onclick="loadActionsFromExceptions()">
+                        <i class="bi bi-download"></i> Загрузить действия из списка
+                    </button>
+                    <button class="btn btn-outline-success btn-sm" onclick="saveActionsToDB()">
+                        <i class="bi bi-database"></i> Записать действия в БД
+                    </button>
+                </div>
+                <div id="actionsMessage" class="mt-2" style="display: none;"></div>
+            </div>
+        </div>
+        
         <!-- Фильтры -->
         <div class="card">
             <div class="card-header">
@@ -730,6 +748,100 @@ function quickCreateException(entityType, entityName, propertyName) {
     .catch(error => {
         console.error('Error:', error);
         alert('Ошибка создания исключения');
+    });
+}
+
+// Функции управления действиями
+function loadActionsFromExceptions() {
+    const classOuid = {{ data.class.ouid }};
+    
+    // Получаем текущие параметры фильтрации из URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const filters = {
+        search: urlParams.get('search') || '',
+        status_variance: urlParams.get('status_variance') || '',
+        event: urlParams.get('event') || ''
+    };
+    
+    fetch('/api/class/' + classOuid + '/load-actions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(filters)
+    })
+    .then(response => response.json())
+    .then(result => {
+        const messageDiv = document.getElementById('actionsMessage');
+        messageDiv.style.display = 'block';
+        
+        if (result.error) {
+            messageDiv.innerHTML = `<div class="alert alert-danger alert-sm">Ошибка: ${result.error}</div>`;
+        } else {
+            messageDiv.innerHTML = `<div class="alert alert-success alert-sm">
+                Действия загружены:<br>
+                • Классы: ${result.class_count}<br>
+                • Группы: ${result.group_count}<br>
+                • Атрибуты: ${result.attribute_count}
+            </div>`;
+            
+            // Перезагружаем страницу для отображения обновленных данных
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        const messageDiv = document.getElementById('actionsMessage');
+        messageDiv.style.display = 'block';
+        messageDiv.innerHTML = `<div class="alert alert-danger alert-sm">Ошибка загрузки действий</div>`;
+    });
+}
+
+function saveActionsToDB() {
+    const classOuid = {{ data.class.ouid }};
+    
+    if (!confirm('Записать все установленные действия в базу данных? Это обновит поля event в таблицах источника.')) {
+        return;
+    }
+    
+    // Получаем текущие параметры фильтрации из URL
+    const saveUrlParams = new URLSearchParams(window.location.search);
+    const saveFilters = {
+        search: saveUrlParams.get('search') || '',
+        status_variance: saveUrlParams.get('status_variance') || '',
+        event: saveUrlParams.get('event') || ''
+    };
+    
+    fetch('/api/class/' + classOuid + '/save-actions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(saveFilters)
+    })
+    .then(response => response.json())
+    .then(result => {
+        const messageDiv = document.getElementById('actionsMessage');
+        messageDiv.style.display = 'block';
+        
+        if (result.error) {
+            messageDiv.innerHTML = `<div class="alert alert-danger alert-sm">Ошибка: ${result.error}</div>`;
+        } else {
+            messageDiv.innerHTML = `<div class="alert alert-success alert-sm">
+                Действия записаны в БД:<br>
+                • Классы: ${result.class_updated} обновлено<br>
+                • Группы: ${result.group_updated} обновлено<br>
+                • Атрибуты: ${result.attribute_updated} обновлено
+            </div>`;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        const messageDiv = document.getElementById('actionsMessage');
+        messageDiv.style.display = 'block';
+        messageDiv.innerHTML = `<div class="alert alert-danger alert-sm">Ошибка записи действий</div>`;
     });
 }
 </script>

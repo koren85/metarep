@@ -664,7 +664,7 @@ class DataService:
         finally:
             self.db_manager.disconnect()
     
-    def get_class_differences(self, class_ouid: int) -> List[Dict[str, Any]]:
+    def get_class_differences(self, class_ouid: int, skip_disconnect: bool = False) -> List[Dict[str, Any]]:
         """Парсинг различий для класса (использует SQL из отчёт по классам.sql)"""
         
         differences_query = f"""
@@ -811,7 +811,7 @@ class DataService:
                 difference_type = self._get_difference_type(row[4], row[5])
                 
                 # Получаем действие исключения для этого различия
-                exception_action = self.get_exception_action('class', row[3], row[3])
+                exception_action = self.get_exception_action('class', row[3], skip_disconnect=skip_disconnect)
                 
                 differences.append({
                     'class_ouid': row[0],
@@ -824,7 +824,7 @@ class DataService:
                     'exception_action': exception_action,
                     'exception_action_name': self._get_action_name(exception_action),
                     'should_ignore': exception_action == 0,
-                    'should_update': exception_action == -1
+                    'should_update': exception_action == 2
                 })
             
             return differences
@@ -833,9 +833,10 @@ class DataService:
             print(f"Ошибка парсинга различий: {e}")
             return []
         finally:
-            self.db_manager.disconnect()
+            if not skip_disconnect:
+                self.db_manager.disconnect()
     
-    def get_group_differences(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None) -> List[Dict[str, Any]]:
+    def get_group_differences(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None, skip_disconnect: bool = False) -> List[Dict[str, Any]]:
         """Парсинг различий для групп атрибутов (использует SQL из отчёт по группам.sql)"""
         
         # Построение WHERE условий для фильтрации групп
@@ -1001,7 +1002,7 @@ class DataService:
                 difference_type = self._get_difference_type(row[4], row[5])
                 
                 # Получаем действие исключения для этого различия
-                exception_action = self.get_exception_action('group', row[3], row[3])
+                exception_action = self.get_exception_action('group', row[3], skip_disconnect=skip_disconnect)
                 
                 differences.append({
                     'attr_grp_ouid': row[0],
@@ -1014,7 +1015,7 @@ class DataService:
                     'exception_action': exception_action,
                     'exception_action_name': self._get_action_name(exception_action),
                     'should_ignore': exception_action == 0,
-                    'should_update': exception_action == -1
+                    'should_update': exception_action == 2
                 })
             
             return differences
@@ -1023,10 +1024,13 @@ class DataService:
             print(f"Ошибка парсинга различий по группам: {e}")
             return []
         finally:
-            self.db_manager.disconnect()
+            if not skip_disconnect:
+                self.db_manager.disconnect()
 
-    def get_attribute_differences(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None) -> List[Dict[str, Any]]:
+    def get_attribute_differences(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None, skip_disconnect: bool = False) -> List[Dict[str, Any]]:
         """Парсинг различий для атрибутов (использует SQL из отчёт по атрибутам.sql)"""
+        
+        print(f"[DEBUG] get_attribute_differences вызван с: class_ouid={class_ouid}, search='{search}', status_variance={status_variance}, event={event}")
         
         # Построение WHERE условий для фильтрации атрибутов
         where_conditions = [f"s.ouidsxclass = {class_ouid}"]
@@ -1046,6 +1050,7 @@ class DataService:
             where_conditions.append("s.A_EVENT = 0")
         
         where_clause = " AND ".join(where_conditions)
+        print(f"[DEBUG] WHERE условия для атрибутов: {where_clause}")
         
         differences_query = f"""
             -- Анализ различий между атрибутами источника и назначения в системе SiTex
@@ -1112,13 +1117,19 @@ class DataService:
                 return []
             
             result = self.db_manager.execute_query(differences_query)
+            print(f"[DEBUG] SQL запрос атрибутов вернул {len(result)} строк")
             
             differences = []
+            debug_count = 0
             for row in result:
                 difference_type = self._get_difference_type(row[4], row[5])
                 
-                # Получаем действие исключения для этого различия
-                exception_action = self.get_exception_action('attribute', row[1], row[3])
+                # Получаем действие исключения для этого различия атрибута
+                # Для атрибутов сравниваем по полю "Свойство" (attribute_name), а не по названию атрибута
+                if debug_count < 3:  # Логируем первые 3 записи
+                    print(f"[DEBUG] Атрибут {debug_count}: attr_name='{row[1]}', attribute_name='{row[3]}'")
+                    debug_count += 1
+                exception_action = self.get_exception_action('attribute', row[3], skip_disconnect=skip_disconnect)
                 
                 differences.append({
                     'attr_ouid': row[0],
@@ -1131,7 +1142,7 @@ class DataService:
                     'exception_action': exception_action,
                     'exception_action_name': self._get_action_name(exception_action),
                     'should_ignore': exception_action == 0,
-                    'should_update': exception_action == -1
+                    'should_update': exception_action == 2
                 })
             
             return differences
@@ -1140,7 +1151,8 @@ class DataService:
             print(f"Ошибка парсинга различий по атрибутам: {e}")
             return []
         finally:
-            self.db_manager.disconnect()
+            if not skip_disconnect:
+                self.db_manager.disconnect()
 
     def get_statistics(self) -> Dict[str, Any]:
         """Получение общей статистики"""
@@ -1460,39 +1472,95 @@ class DataService:
             self.db_manager.disconnect()
     
     def get_exception_action(self, entity_type: str, entity_name: str, 
-                           property_name: str) -> int:
+                           property_name: str = None, skip_disconnect: bool = False) -> int:
         """Получение действия для конкретного исключения"""
         
         query = """
             SELECT action FROM __meta_statistic 
-            WHERE entity_type = ? AND entity_name = ? AND property_name = ?
+            WHERE entity_type = ? AND entity_name = ?
         """
         
         try:
+            # print(f"[DEBUG] Поиск исключения: тип='{entity_type}', сущность='{entity_name}'")
+            
             if not self.db_manager.connect():
+                # print("[DEBUG] Ошибка подключения к БД")
                 return 0  # По умолчанию игнорировать
                 
             prep_stmt = self.db_manager.connection.prepareStatement(query)
             prep_stmt.setString(1, entity_type)
             prep_stmt.setString(2, entity_name)
-            prep_stmt.setString(3, property_name)
             result_set = prep_stmt.executeQuery()
             
             if result_set.next():
                 action = result_set.getInt('action')
+                # print(f"[DEBUG] Найдено исключение: действие={action}")
                 result_set.close()
                 prep_stmt.close()
                 return action
             else:
+                # print(f"[DEBUG] Исключение не найдено для: {entity_type}/{entity_name}")
                 result_set.close()
                 prep_stmt.close()
                 return 0  # По умолчанию игнорировать
                 
         except Exception as e:
-            print(f"Ошибка получения действия исключения: {e}")
+            print(f"[ERROR] Ошибка получения действия исключения: {e}")
             return 0
         finally:
+            if not skip_disconnect:
+                self.db_manager.disconnect()
+    
+    def _debug_exceptions_table(self):
+        """Отладочный метод для вывода содержимого таблицы исключений"""
+        try:
+            if not self.db_manager.connect():
+                print("[DEBUG] Ошибка подключения к БД для отладки")
+                return
+                
+            # Проверяем общее количество записей
+            count_query = "SELECT COUNT(*) FROM __meta_statistic"
+            result = self.db_manager.execute_query(count_query)
+            total_count = int(result[0][0]) if result else 0
+            print(f"[DEBUG] Всего исключений в таблице: {total_count}")
+            
+            # Выводим количество по типам
+            type_query = "SELECT entity_type, COUNT(*) FROM __meta_statistic GROUP BY entity_type"
+            result = self.db_manager.execute_query(type_query)
+            print("[DEBUG] По типам:")
+            for row in result:
+                print(f"  {row[0]}: {row[1]} записей")
+            
+            # Выводим несколько примеров атрибутов
+            attr_query = "SELECT entity_name, property_name, action FROM __meta_statistic WHERE entity_type = 'attribute' LIMIT 5"
+            result = self.db_manager.execute_query(attr_query)
+            print("[DEBUG] Примеры атрибутов:")
+            for row in result:
+                print(f"  {row[0]} / {row[1]} -> {row[2]}")
+            
+            # Проверяем конкретно readOnly и informs
+            specific_query = "SELECT entity_name, property_name, action FROM __meta_statistic WHERE entity_type = 'attribute' AND entity_name IN ('readOnly', 'informs', 'refClass')"
+            specific_result = self.db_manager.execute_query(specific_query)
+            print("[DEBUG] Поиск readOnly, informs, refClass:")
+            for row in specific_result:
+                print(f"  {row[0]} / {row[1]} -> {row[2]}")
+                
+        except Exception as e:
+            print(f"[ERROR] Ошибка отладки таблицы исключений: {e}")
+        finally:
             self.db_manager.disconnect()
+    
+    def _debug_unique_properties(self, attribute_differences):
+        """Отладочный метод для показа уникальных свойств в различиях"""
+        unique_properties = set()
+        for diff in attribute_differences:
+            attr_name = diff.get('attribute_name', '')
+            if attr_name:
+                unique_properties.add(attr_name)
+        
+        print(f"[DEBUG] Уникальные свойства в различиях ({len(unique_properties)} шт.):")
+        for prop in sorted(unique_properties):
+            print(f"  {prop}")
     
     def _get_action_name(self, action) -> str:
         """Получение названия действия по коду"""
@@ -1504,6 +1572,521 @@ class DataService:
             
         action_names = {
             0: "Игнорировать",
-            -1: "Обновить"
+            2: "Обновить"
         }
-        return action_names.get(action_int, "Неизвестно") 
+        return action_names.get(action_int, "Неизвестно")
+    
+    # ===== Методы для управления действиями =====
+    
+    def load_actions_from_exceptions(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None) -> Dict[str, Any]:
+        """Загрузка действий из списка исключений для класса"""
+        
+        try:
+            print(f"[DEBUG] Загрузка действий для класса {class_ouid} с фильтрами: search='{search}', status_variance={status_variance}, event={event}")
+            
+            # Отладка: выводим содержимое таблицы исключений (отключено)
+            # self._debug_exceptions_table()
+            
+            # Получаем все различия для класса с теми же фильтрами, что и на странице
+            print(f"[DEBUG] Вызов get_class_differences({class_ouid}) - без фильтров")
+            class_differences = self.get_class_differences(class_ouid)
+            print(f"[DEBUG] Вызов get_group_differences({class_ouid}, {search}, {status_variance}, {event})")
+            group_differences = self.get_group_differences(class_ouid, search, status_variance, event) 
+            print(f"[DEBUG] Вызов get_attribute_differences({class_ouid}, {search}, {status_variance}, {event})")
+            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event)
+            
+            # Отладка: показываем все уникальные свойства в различиях
+            self._debug_unique_properties(attribute_differences)
+            
+            print(f"[DEBUG] Найдено различий: классы={len(class_differences)}, группы={len(group_differences)}, атрибуты={len(attribute_differences)}")
+            
+            class_count = 0
+            group_count = 0
+            attribute_count = 0
+            
+            # Подсчитываем количество различий с загруженными действиями
+            print("[DEBUG] Анализ различий классов:")
+            for i, diff in enumerate(class_differences[:5]):  # Первые 5 для отладки
+                action = diff.get('exception_action', 0)
+                print(f"  Класс {i}: {diff.get('attribute_name', 'N/A')} -> действие: {action}")
+                if action != 0:
+                    class_count += 1
+                    
+            print("[DEBUG] Анализ различий групп:")
+            for i, diff in enumerate(group_differences[:5]):  # Первые 5 для отладки
+                action = diff.get('exception_action', 0)
+                print(f"  Группа {i}: {diff.get('attribute_name', 'N/A')} -> действие: {action}")
+                if action != 0:
+                    group_count += 1
+                    
+            print("[DEBUG] Анализ различий атрибутов:")
+            for i, diff in enumerate(attribute_differences[:5]):  # Первые 5 для отладки
+                action = diff.get('exception_action', 0)
+                attr_name = diff.get('attribute_name', 'N/A')
+                print(f"  Атрибут {i}: {attr_name} -> действие: {action}")
+                if action != 0:
+                    attribute_count += 1
+            
+            print(f"[DEBUG] Итого действий найдено: классы={class_count}, группы={group_count}, атрибуты={attribute_count}")
+            
+            return {
+                "success": True,
+                "message": "Действия загружены из списка исключений",
+                "class_count": class_count,
+                "group_count": group_count,
+                "attribute_count": attribute_count
+            }
+            
+        except Exception as e:
+            print(f"[ERROR] Ошибка загрузки действий: {e}")
+            return {"error": f"Ошибка загрузки действий: {e}"}
+    
+    def _get_class_differences_no_disconnect(self, class_ouid: int) -> List[Dict[str, Any]]:
+        """Версия get_class_differences без disconnect() для внутреннего использования"""
+        try:
+            differences_query = f"""
+                -- Парсинг различий для конкретного класса
+                WITH log_lines AS (
+                    SELECT
+                        ouid as class_ouid,
+                        name as class_name,
+                        description as class_description,
+                        a_log,
+                        unnest(string_to_array(a_log, E'\\n')) as log_line,
+                        generate_series(1, array_length(string_to_array(a_log, E'\\n'), 1)) as line_number
+                    FROM SXCLASS_SOURCE
+                    WHERE A_STATUS_VARIANCE = 2 AND A_EVENT = 4 AND ouid = {class_ouid}
+                ),
+                source_lines AS (
+                    SELECT
+                        class_ouid,
+                        class_name,
+                        class_description,
+                        line_number,
+                        log_line,
+                        ROW_NUMBER() OVER (PARTITION BY class_name ORDER BY line_number) as source_seq
+                    FROM log_lines
+                    WHERE log_line ~ '^[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*.+'
+                ),
+                target_lines AS (
+                    SELECT
+                        class_ouid,
+                        class_name,
+                        class_description,
+                        line_number,
+                        log_line,
+                        ROW_NUMBER() OVER (PARTITION BY class_name ORDER BY line_number) as target_seq
+                    FROM log_lines
+                    WHERE log_line ~ '^\\s*[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*.+'
+                ),
+                combined AS (
+                    SELECT
+                        COALESCE(s.class_ouid, t.class_ouid) as class_ouid,
+                        COALESCE(s.class_name, t.class_name) as class_name,
+                        COALESCE(s.class_description, t.class_description) as class_description,
+                        s.log_line as source_value,
+                        t.log_line as target_value,
+                        TRIM(SPLIT_PART(COALESCE(s.log_line, t.log_line), ':', 1)) as property_name
+                    FROM source_lines s
+                    FULL OUTER JOIN target_lines t ON s.class_name = t.class_name AND s.source_seq = t.target_seq
+                )
+                SELECT
+                    class_ouid,
+                    class_name,
+                    class_description,
+                    property_name,
+                    source_value,
+                    target_value
+                FROM combined
+                WHERE source_value != target_value OR source_value IS NULL OR target_value IS NULL
+                ORDER BY class_name, property_name;
+            """
+            
+            result = self.db_manager.execute_query(differences_query)
+            differences = []
+            
+            for row in result:
+                class_ouid, class_name, class_description, property_name, source_value, target_value = row
+                
+                # Получаем действие из исключений
+                exception_action = self.get_exception_action('class', property_name)
+                
+                differences.append({
+                    'class_ouid': class_ouid,
+                    'class_name': class_name,
+                    'class_description': class_description,
+                    'property_name': property_name,
+                    'source_value': source_value,
+                    'target_value': target_value,
+                    'exception_action': exception_action
+                })
+            
+            return differences
+            
+        except Exception as e:
+            print(f"Ошибка парсинга различий: {e}")
+            return []
+
+    def _get_group_differences_no_disconnect(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None) -> List[Dict[str, Any]]:
+        """Версия get_group_differences без disconnect() для внутреннего использования"""
+        try:
+            # Определяем WHERE условия в зависимости от переданных параметров
+            where_conditions = [f"s.cls = {class_ouid}"]
+            
+            if status_variance is not None:
+                where_conditions.append(f"s.A_STATUS_VARIANCE = {status_variance}")
+            else:
+                where_conditions.append("s.A_STATUS_VARIANCE = 2")
+            
+            if event is not None:
+                where_conditions.append(f"s.a_event = {event}")
+            else:
+                where_conditions.append("s.A_EVENT = 0")
+            
+            if search and search.strip() and search != 'None':
+                where_conditions.append(f"(s.title ILIKE '%{search}%' OR s.name ILIKE '%{search}%')")
+            
+            groups_where_clause = " AND ".join(where_conditions)
+            
+            differences_query = f"""
+                -- Парсинг различий для групп атрибутов
+                                 WITH log_lines AS (
+                     SELECT
+                         ouid as attr_grp_ouid,
+                         cls as class_ouid,
+                         title as attr_grp_title,
+                         name as attr_grp_name,
+                         a_log,
+                         unnest(string_to_array(a_log, E'\\n')) as log_line,
+                         generate_series(1, array_length(string_to_array(a_log, E'\\n'), 1)) as line_number
+                     FROM SXATTR_GRP_SOURCE s
+                     WHERE {groups_where_clause}
+                 ),
+                source_lines AS (
+                    SELECT
+                        attr_grp_ouid,
+                        class_ouid,
+                        attr_grp_title,
+                        attr_grp_name,
+                        line_number,
+                        log_line,
+                        ROW_NUMBER() OVER (PARTITION BY attr_grp_name ORDER BY line_number) as source_seq
+                    FROM log_lines
+                    WHERE log_line ~ '^[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*.+'
+                ),
+                target_lines AS (
+                    SELECT
+                        attr_grp_ouid,
+                        class_ouid,
+                        attr_grp_title,
+                        attr_grp_name,
+                        line_number,
+                        log_line,
+                        ROW_NUMBER() OVER (PARTITION BY attr_grp_name ORDER BY line_number) as target_seq
+                    FROM log_lines
+                    WHERE log_line ~ '^\\s*[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*.+'
+                ),
+                combined AS (
+                    SELECT
+                        COALESCE(s.attr_grp_ouid, t.attr_grp_ouid) as attr_grp_ouid,
+                        COALESCE(s.class_ouid, t.class_ouid) as class_ouid,
+                        COALESCE(s.attr_grp_title, t.attr_grp_title) as attr_grp_title,
+                        COALESCE(s.attr_grp_name, t.attr_grp_name) as attr_grp_name,
+                        s.log_line as source_value,
+                        t.log_line as target_value,
+                        TRIM(SPLIT_PART(COALESCE(s.log_line, t.log_line), ':', 1)) as property_name
+                    FROM source_lines s
+                    FULL OUTER JOIN target_lines t ON s.attr_grp_name = t.attr_grp_name AND s.source_seq = t.target_seq
+                )
+                SELECT
+                    attr_grp_ouid,
+                    class_ouid,
+                    attr_grp_title,
+                    attr_grp_name,
+                    property_name,
+                    source_value,
+                    target_value
+                FROM combined
+                WHERE source_value != target_value OR source_value IS NULL OR target_value IS NULL
+                ORDER BY attr_grp_name, property_name;
+            """
+            
+            result = self.db_manager.execute_query(differences_query)
+            differences = []
+            
+            for row in result:
+                attr_grp_ouid, class_ouid, attr_grp_title, attr_grp_name, property_name, source_value, target_value = row
+                
+                # Получаем действие из исключений
+                exception_action = self.get_exception_action('group', property_name)
+                
+                differences.append({
+                    'attr_grp_ouid': attr_grp_ouid,
+                    'class_ouid': class_ouid,
+                    'attr_grp_title': attr_grp_title,
+                    'attr_grp_name': attr_grp_name,
+                    'property_name': property_name,
+                    'source_value': source_value,
+                    'target_value': target_value,
+                    'exception_action': exception_action
+                })
+            
+            return differences
+            
+        except Exception as e:
+            print(f"Ошибка парсинга различий по группам: {e}")
+            return []
+
+    def _get_attribute_differences_no_disconnect(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None) -> List[Dict[str, Any]]:
+        """Версия get_attribute_differences без disconnect() для внутреннего использования"""
+        try:
+            # Определяем WHERE условия в зависимости от переданных параметров  
+            where_conditions = [f"s.ouidsxclass = {class_ouid}"]
+            
+            if status_variance is not None:
+                where_conditions.append(f"s.A_STATUS_VARIANCE = {status_variance}")
+            else:
+                where_conditions.append("s.A_STATUS_VARIANCE = 2")
+            
+            if event is not None:
+                where_conditions.append(f"s.a_event = {event}")
+            else:
+                where_conditions.append("s.A_EVENT = 0")
+            
+            if search and search.strip() and search != 'None':
+                where_conditions.append(f"(s.title ILIKE '%{search}%' OR s.name ILIKE '%{search}%')")
+            
+            attrs_where_clause = " AND ".join(where_conditions)
+            
+            differences_query = f"""
+                -- Парсинг различий для атрибутов
+                WITH log_lines AS (
+                    SELECT
+                        ouid as attr_ouid,
+                        ouidsxclass as class_ouid,
+                        title as attr_title,
+                        name as attr_name,
+                        a_log,
+                        unnest(string_to_array(a_log, E'\\n')) as log_line,
+                        generate_series(1, array_length(string_to_array(a_log, E'\\n'), 1)) as line_number
+                    FROM SXATTR_SOURCE s
+                    WHERE {attrs_where_clause}
+                ),
+                source_lines AS (
+                    SELECT
+                        attr_ouid,
+                        class_ouid,
+                        attr_title,
+                        attr_name,
+                        line_number,
+                        log_line,
+                        ROW_NUMBER() OVER (PARTITION BY attr_name ORDER BY line_number) as source_seq
+                    FROM log_lines
+                    WHERE log_line ~ '^[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*.+'
+                ),
+                target_lines AS (
+                    SELECT
+                        attr_ouid,
+                        class_ouid,
+                        attr_title,
+                        attr_name,
+                        line_number,
+                        log_line,
+                        ROW_NUMBER() OVER (PARTITION BY attr_name ORDER BY line_number) as target_seq
+                    FROM log_lines
+                    WHERE log_line ~ '^\\s*[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*.+'
+                ),
+                combined AS (
+                    SELECT
+                        COALESCE(s.attr_ouid, t.attr_ouid) as attr_ouid,
+                        COALESCE(s.class_ouid, t.class_ouid) as class_ouid,
+                        COALESCE(s.attr_title, t.attr_title) as attr_title,
+                        COALESCE(s.attr_name, t.attr_name) as attr_name,
+                        s.log_line as source_value,
+                        t.log_line as target_value,
+                        TRIM(SPLIT_PART(COALESCE(s.log_line, t.log_line), ':', 1)) as property_name
+                    FROM source_lines s
+                    FULL OUTER JOIN target_lines t ON s.attr_name = t.attr_name AND s.source_seq = t.target_seq
+                )
+                SELECT
+                    attr_ouid,
+                    class_ouid,
+                    attr_title,
+                    attr_name,
+                    property_name,
+                    source_value,
+                    target_value
+                FROM combined
+                WHERE source_value != target_value OR source_value IS NULL OR target_value IS NULL
+                ORDER BY attr_name, property_name;
+            """
+            
+            result = self.db_manager.execute_query(differences_query)
+            differences = []
+            
+            for row in result:
+                attr_ouid, class_ouid, attr_title, attr_name, property_name, source_value, target_value = row
+                
+                # Получаем действие из исключений
+                exception_action = self.get_exception_action('attribute', property_name)
+                
+                differences.append({
+                    'attr_ouid': attr_ouid,
+                    'class_ouid': class_ouid,
+                    'attr_title': attr_title,
+                    'attr_name': attr_name,
+                    'property_name': property_name,
+                    'source_value': source_value,
+                    'target_value': target_value,
+                    'exception_action': exception_action
+                })
+            
+            return differences
+            
+        except Exception as e:
+            print(f"Ошибка парсинга различий по атрибутам: {e}")
+            return []
+
+    def save_actions_to_db(self, class_ouid: int, search: str = None, status_variance: int = None, event: int = None) -> Dict[str, Any]:
+        """Записать действия в поля event соответствующих таблиц"""
+        
+        try:
+            print(f"[DEBUG] Сохранение действий для класса {class_ouid} с фильтрами: search='{search}', status_variance={status_variance}, event={event}")
+            
+            print(f"[DEBUG] Попытка подключения к БД...")
+            if not self.db_manager.connect():
+                print(f"[DEBUG] Ошибка: не удалось подключиться к БД")
+                return {"error": "Ошибка подключения к БД"}
+            
+            print(f"[DEBUG] Подключение к БД успешно, connection: {self.db_manager.connection}")
+            
+            class_updated = 0
+            group_updated = 0 
+            attribute_updated = 0
+            
+            # Получаем различия с действиями используя основные функции с флагом skip_disconnect
+            print(f"[DEBUG] Получение различий классов...")
+            class_differences = self.get_class_differences(class_ouid, skip_disconnect=True)
+            print(f"[DEBUG] Различий классов: {len(class_differences)}")
+            
+            print(f"[DEBUG] Получение различий групп...")
+            group_differences = self.get_group_differences(class_ouid, search, status_variance, event, skip_disconnect=True)
+            print(f"[DEBUG] Различий групп: {len(group_differences)}")
+            
+            print(f"[DEBUG] Получение различий атрибутов...")
+            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event, skip_disconnect=True)
+            print(f"[DEBUG] Различий атрибутов: {len(attribute_differences)}")
+            
+            # Проверяем connection перед использованием
+            if self.db_manager.connection is None:
+                print(f"[DEBUG] ОШИБКА: connection равен None!")
+                return {"error": "Подключение к БД потеряно"}
+            
+            # Обновляем классы в SXCLASS_SOURCE
+            print(f"[DEBUG] Обновление классов...")
+            for diff in class_differences:
+                action = diff.get('exception_action', 0)
+                print(f"[DEBUG] Класс {class_ouid}, действие: {action}")
+                if action != 0:  # Только если есть действие
+                    update_query = """
+                        UPDATE SXCLASS_SOURCE 
+                        SET a_event = ? 
+                        WHERE ouid = ?
+                    """
+                    print(f"[DEBUG] Подготовка SQL для класса: {update_query}")
+                    prep_stmt = self.db_manager.connection.prepareStatement(update_query)
+                    prep_stmt.setInt(1, int(action))
+                    prep_stmt.setInt(2, int(class_ouid))
+                    rows = prep_stmt.executeUpdate()
+                    prep_stmt.close()
+                    print(f"[DEBUG] Обновлено строк классов: {rows}")
+                    if rows > 0:
+                        class_updated += 1
+            
+            # Обновляем группы в SXATTR_GRP_SOURCE
+            print(f"[DEBUG] Обновление групп...")
+            for i, diff in enumerate(group_differences):
+                action = diff.get('exception_action', 0)
+                print(f"[DEBUG] Группа {i}, OUID: {diff.get('attr_grp_ouid')}, действие: {action}")
+                if action != 0:  # Только если есть действие
+                    update_query = """
+                        UPDATE SXATTR_GRP_SOURCE 
+                        SET a_event = ? 
+                        WHERE ouid = ?
+                    """
+                    print(f"[DEBUG] Подготовка SQL для группы: {update_query}")
+                    prep_stmt = self.db_manager.connection.prepareStatement(update_query)
+                    prep_stmt.setInt(1, int(action))
+                    prep_stmt.setInt(2, int(diff['attr_grp_ouid']))
+                    rows = prep_stmt.executeUpdate()
+                    prep_stmt.close()
+                    print(f"[DEBUG] Обновлено строк групп: {rows}")
+                    if rows > 0:
+                        group_updated += 1
+            
+            # Обновляем атрибуты в SXATTR_SOURCE
+            print(f"[DEBUG] Обновление атрибутов...")
+            for i, diff in enumerate(attribute_differences):
+                action = diff.get('exception_action', 0)
+                print(f"[DEBUG] Атрибут {i}, OUID: {diff.get('attr_ouid')}, действие: {action}")
+                if action != 0:  # Только если есть действие
+                    update_query = """
+                        UPDATE SXATTR_SOURCE 
+                        SET a_event = ? 
+                        WHERE ouid = ?
+                    """
+                    print(f"[DEBUG] Подготовка SQL для атрибута: {update_query}")
+                    prep_stmt = self.db_manager.connection.prepareStatement(update_query)
+                    prep_stmt.setInt(1, int(action))
+                    prep_stmt.setInt(2, int(diff['attr_ouid']))
+                    rows = prep_stmt.executeUpdate()
+                    prep_stmt.close()
+                    print(f"[DEBUG] Обновлено строк атрибутов: {rows}")
+                    if rows > 0:
+                        attribute_updated += 1
+            
+            print(f"[DEBUG] Сохранение завершено: классы={class_updated}, группы={group_updated}, атрибуты={attribute_updated}")
+            
+            return {
+                "success": True,
+                "message": "Действия записаны в БД",
+                "class_updated": class_updated,
+                "group_updated": group_updated,
+                "attribute_updated": attribute_updated
+            }
+            
+        except Exception as e:
+            print(f"[DEBUG] ОШИБКА при сохранении: {e}")
+            print(f"[DEBUG] Тип ошибки: {type(e)}")
+            import traceback
+            print(f"[DEBUG] Стек вызовов: {traceback.format_exc()}")
+            return {"error": f"Ошибка записи действий: {e}"}
+        finally:
+            print(f"[DEBUG] Отключение от БД...")
+            self.db_manager.disconnect() 
+
+    def migrate_actions_from_minus_one_to_two(self):
+        """Обновляет все действия с -1 на 2 в таблице исключений"""
+        try:
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+            
+            update_query = """
+                UPDATE __meta_statistic 
+                SET action = 2 
+                WHERE action = -1
+            """
+            
+            prep_stmt = self.db_manager.connection.prepareStatement(update_query)
+            rows_updated = prep_stmt.executeUpdate()
+            prep_stmt.close()
+            
+            return {
+                "success": True,
+                "message": f"Обновлено {rows_updated} записей: действие -1 -> 2"
+            }
+            
+        except Exception as e:
+            return {"error": f"Ошибка обновления действий: {e}"}
+        finally:
+            self.db_manager.disconnect()

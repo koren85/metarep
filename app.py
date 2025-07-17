@@ -370,8 +370,8 @@ def api_create_exception():
     if entity_type not in ['class', 'group', 'attribute']:
         return jsonify({"error": "entity_type должен быть: class, group или attribute"}), 400
     
-    if action not in [0, -1]:
-        return jsonify({"error": "action должен быть: 0 (игнорировать) или -1 (обновить)"}), 400
+    if action not in [0, 2]:
+        return jsonify({"error": "action должен быть: 0 (игнорировать) или 2 (обновить)"}), 400
     
     result = data_service.create_exception(entity_type, entity_name, property_name, action)
     
@@ -398,8 +398,8 @@ def api_update_exception(exception_id):
     if entity_type and entity_type not in ['class', 'group', 'attribute']:
         return jsonify({"error": "entity_type должен быть: class, group или attribute"}), 400
     
-    if action is not None and action not in [0, -1]:
-        return jsonify({"error": "action должен быть: 0 (игнорировать) или -1 (обновить)"}), 400
+    if action is not None and action not in [0, 2]:
+        return jsonify({"error": "action должен быть: 0 (игнорировать) или 2 (обновить)"}), 400
     
     result = data_service.update_exception(
         exception_id, entity_type, entity_name, property_name, action
@@ -421,6 +421,60 @@ def api_delete_exception(exception_id):
     else:
         return jsonify(result)
 
+@app.route('/api/class/<int:class_ouid>/load-actions', methods=['POST'])
+def api_load_actions(class_ouid):
+    """API для загрузки действий из списка исключений"""
+    
+    # Получаем параметры фильтрации из тела запроса
+    filters = request.get_json() or {}
+    search = filters.get('search', '')
+    status_variance = filters.get('status_variance', '')
+    event = filters.get('event', '')
+    
+    # Конвертируем пустые строки в None, числовые значения в int
+    search = search if search else None
+    status_variance = int(status_variance) if status_variance else None
+    event = int(event) if event else None
+    
+    result = data_service.load_actions_from_exceptions(class_ouid, search, status_variance, event)
+    
+    if "error" in result:
+        return jsonify(result), 400
+    else:
+        return jsonify(result)
+
+@app.route('/api/class/<int:class_ouid>/save-actions', methods=['POST'])
+def api_save_actions(class_ouid):
+    """API для записи действий в БД"""
+    
+    # Получаем параметры фильтрации из тела запроса
+    filters = request.get_json() or {}
+    search = filters.get('search', '')
+    status_variance = filters.get('status_variance', '')
+    event = filters.get('event', '')
+    
+    # Конвертируем пустые строки в None, числовые значения в int
+    search = search if search else None
+    status_variance = int(status_variance) if status_variance else None
+    event = int(event) if event else None
+    
+    result = data_service.save_actions_to_db(class_ouid, search, status_variance, event)
+    
+    if "error" in result:
+        return jsonify(result), 400
+    else:
+        return jsonify(result)
+
+@app.route('/api/migrate-actions', methods=['POST'])
+def api_migrate_actions():
+    """API для миграции действий с -1 на 2"""
+    result = data_service.migrate_actions_from_minus_one_to_two()
+    
+    if "error" in result:
+        return jsonify(result), 400
+    else:
+        return jsonify(result), 200
+
 @app.errorhandler(404)
 def not_found(error):
     return render_template('error.html', error="Страница не найдена"), 404
@@ -438,4 +492,8 @@ if __name__ == '__main__':
     print(f"📊 Подключение к PostgreSQL: {config.postgres.host}:{config.postgres.port}")
     print(f"🔗 Базовый URL админки: {config.sitex_context_url}")
     
-    app.run(debug=True, host='0.0.0.0', port=5001) 
+    # Конфигурация из переменных окружения
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('FLASK_DEBUG', 'false').lower() in ('true', '1', 'yes')
+    
+    app.run(debug=debug, host='0.0.0.0', port=port) 

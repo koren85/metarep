@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  metarep-dev:
+    build: .
+    container_name: metarep-dev
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=true
+      - DEBUG_MODE=true
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+      - ./migration_output:/app/migration_output
+    restart: "no"
+    command: ["python", "-u", "app.py"]
+    stdin_open: true
+    tty: true 
