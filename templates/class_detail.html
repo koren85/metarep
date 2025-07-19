@@ -113,15 +113,15 @@
                         </select>
                     </div>
                     
+
+                    
                     <div class="mb-3">
-                        <label for="event" class="form-label">Рекомендованное действие</label>
-                        <select class="form-select" id="event" name="event">
+                        <label for="a_priznak" class="form-label">Признак</label>
+                        <select class="form-select" id="a_priznak" name="a_priznak">
                             <option value="">Все</option>
-                            <option value="0" {% if data.current_filters.event == 0 %}selected{% endif %}>0 - игнорировать</option>
-                            <option value="1" {% if data.current_filters.event == 1 %}selected{% endif %}>1 - Добавить</option>
-                            <option value="2" {% if data.current_filters.event == 2 %}selected{% endif %}>2 - Обновить</option>
-                            <option value="3" {% if data.current_filters.event == 3 %}selected{% endif %}>3 - Не в списке для переноса</option>
-                            <option value="4" {% if data.current_filters.event == 4 %}selected{% endif %}>4 - В списке на миграцию</option>
+                            <option value="1" {% if data.current_filters.a_priznak == 1 %}selected{% endif %}>1 - Переносим миграцией</option>
+                            <option value="2" {% if data.current_filters.a_priznak == 2 %}selected{% endif %}>2 - Не переносим</option>
+                            <option value="3" {% if data.current_filters.a_priznak == 3 %}selected{% endif %}>3 - Переносим не миграцией</option>
                         </select>
                     </div>
                     
@@ -209,16 +209,15 @@
                                     </span>
                                 </td>
                             </tr>
+
                             <tr>
-                                <td class="field-label">Рекомендованное действие</td>
+                                <td class="field-label">Признак</td>
                                 <td>
-                                    <span class="badge {% if data.class.a_event == 4 %}bg-info{% else %}bg-secondary{% endif %}">
-                                        {% if data.class.a_event == 0 %}0 - игнорировать
-                                        {% elif data.class.a_event == 1 %}1 - Добавить
-                                        {% elif data.class.a_event == 2 %}2 - Обновить
-                                        {% elif data.class.a_event == 3 %}3 - Не в списке для переноса
-                                        {% elif data.class.a_event == 4 %}4 - В списке на миграцию
-                                        {% else %}{{ data.class.a_event }}
+                                    <span class="badge {% if data.class.a_priznak == 1 %}bg-success{% elif data.class.a_priznak == 2 %}bg-danger{% elif data.class.a_priznak == 3 %}bg-warning{% else %}bg-secondary{% endif %}">
+                                        {% if data.class.a_priznak == 1 %}1 - Переносим миграцией
+                                        {% elif data.class.a_priznak == 2 %}2 - Не переносим
+                                        {% elif data.class.a_priznak == 3 %}3 - Переносим не миграцией
+                                        {% else %}{{ data.class.a_priznak or 'Не указано' }}
                                         {% endif %}
                                     </span>
                                 </td>
@@ -343,7 +342,7 @@
                                     <th>Заголовок</th>
                                     <th>Тип просмотра</th>
                                     <th>Статус сравнения</th>
-                                    <th>Рекомендованное действие</th>
+                                    <th>Признак</th>
                                     <th>Действия</th>
                                 </tr>
                             </thead>
@@ -363,14 +362,13 @@
                                             {% endif %}
                                         </span>
                                     </td>
+
                                     <td>
-                                        <span class="badge {% if group.a_event == 4 %}bg-info{% else %}bg-secondary{% endif %}">
-                                            {% if group.a_event|int == 0 %}игнорировать
-                                            {% elif group.a_event|int == 1 %}Добавить
-                                            {% elif group.a_event|int == 2 %}Обновить
-                                            {% elif group.a_event|int == 3 %}Не в списке для переноса
-                                            {% elif group.a_event|int == 4 %}В списке на миграцию
-                                            {% else %}{{ group.a_event }}
+                                        <span class="badge {% if group.a_priznak == 1 %}bg-success{% elif group.a_priznak == 2 %}bg-danger{% elif group.a_priznak == 3 %}bg-warning{% else %}bg-secondary{% endif %}">
+                                            {% if group.a_priznak == 1 %}1 - Переносим миграцией
+                                            {% elif group.a_priznak == 2 %}2 - Не переносим
+                                            {% elif group.a_priznak == 3 %}3 - Переносим не миграцией
+                                            {% else %}{{ group.a_priznak or 'Не указано' }}
                                             {% endif %}
                                         </span>
                                     </td>
@@ -421,7 +419,7 @@
                                     <th>Заголовок</th>
                                     <th>Тип данных</th>
                                     <th>Статус сравнения</th>
-                                    <th>Рекомендованное действие</th>
+                                    <th>Признак</th>
                                     <th>Действия</th>
                                 </tr>
                             </thead>
@@ -441,14 +439,13 @@
                                             {% endif %}
                                         </span>
                                     </td>
+
                                     <td>
-                                        <span class="badge {% if attr.a_event == 4 %}bg-info{% else %}bg-secondary{% endif %}">
-                                            {% if attr.a_event|int == 0 %}игнорировать
-                                            {% elif attr.a_event|int == 1 %}Добавить
-                                            {% elif attr.a_event|int == 2 %}Обновить
-                                            {% elif attr.a_event|int == 3 %}Не в списке для переноса
-                                            {% elif attr.a_event|int == 4 %}В списке на миграцию
-                                            {% else %}{{ attr.a_event }}
+                                        <span class="badge {% if attr.a_priznak == 1 %}bg-success{% elif attr.a_priznak == 2 %}bg-danger{% elif attr.a_priznak == 3 %}bg-warning{% else %}bg-secondary{% endif %}">
+                                            {% if attr.a_priznak == 1 %}1 - Переносим миграцией
+                                            {% elif attr.a_priznak == 2 %}2 - Не переносим
+                                            {% elif attr.a_priznak == 3 %}3 - Переносим не миграцией
+                                            {% else %}{{ attr.a_priznak or 'Не указано' }}
                                             {% endif %}
                                         </span>
                                     </td>
@@ -794,7 +791,7 @@ function quickCreateException(entityType, entityName, propertyName) {
 
 // Функции управления действиями
 function loadActionsFromExceptions() {
-    const classOuid = {{ data.class.ouid }};
+    const classOuid = '{{ data.class.ouid }}';
     
     // Получаем текущие параметры фильтрации из URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -841,7 +838,7 @@ function loadActionsFromExceptions() {
 }
 
 function saveActionsToDB() {
-    const classOuid = {{ data.class.ouid }};
+    const classOuid = '{{ data.class.ouid }}';
     
     if (!confirm('Записать все установленные действия в базу данных? Это обновит поля event в таблицах источника.')) {
         return;

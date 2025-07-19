@@ -37,6 +37,7 @@ def index():
     search = request.args.get('search', '')
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
     base_url = request.args.get('base_url', '')
     source_base_url = request.args.get('source_base_url', '')
     
@@ -53,6 +54,7 @@ def index():
         search=search if search else None,
         status_variance=status_variance,
         event=event,
+        a_priznak=a_priznak,
         base_url=base_url if base_url else None,
         source_base_url=source_base_url if source_base_url else None
     )
@@ -67,6 +69,7 @@ def index():
                              'search': search,
                              'status_variance': status_variance,
                              'event': event,
+                             'a_priznak': a_priznak,
                              'base_url': base_url,
                              'source_base_url': source_base_url
                          })
@@ -81,6 +84,7 @@ def groups():
     search = request.args.get('search', '')
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
     base_url = request.args.get('base_url', '')
     source_base_url = request.args.get('source_base_url', '')
     
@@ -97,6 +101,7 @@ def groups():
         search=search if search else None,
         status_variance=status_variance,
         event=event,
+        a_priznak=a_priznak,
         base_url=base_url if base_url else None,
         source_base_url=source_base_url if source_base_url else None
     )
@@ -111,6 +116,7 @@ def groups():
                              'search': search,
                              'status_variance': status_variance,
                              'event': event,
+                             'a_priznak': a_priznak,
                              'base_url': base_url,
                              'source_base_url': source_base_url
                          })
@@ -125,6 +131,7 @@ def attributes():
     search = request.args.get('search', '')
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
     base_url = request.args.get('base_url', '')
     source_base_url = request.args.get('source_base_url', '')
     
@@ -141,6 +148,7 @@ def attributes():
         search=search if search else None,
         status_variance=status_variance,
         event=event,
+        a_priznak=a_priznak,
         base_url=base_url if base_url else None,
         source_base_url=source_base_url if source_base_url else None
     )
@@ -155,6 +163,7 @@ def attributes():
                              'search': search,
                              'status_variance': status_variance,
                              'event': event,
+                             'a_priznak': a_priznak,
                              'base_url': base_url,
                              'source_base_url': source_base_url
                          })
@@ -168,6 +177,7 @@ def class_detail(class_ouid):
     search = request.args.get('search', '')
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
     
     result = data_service.get_class_details(
         class_ouid, 
@@ -175,7 +185,8 @@ def class_detail(class_ouid):
         source_base_url if source_base_url else None,
         search if search else None,
         status_variance,
-        event
+        event,
+        a_priznak
     )
     
     if 'error' in result:
@@ -186,6 +197,7 @@ def class_detail(class_ouid):
         'search': search,
         'status_variance': status_variance,
         'event': event,
+        'a_priznak': a_priznak,
         'base_url': base_url,
         'source_base_url': source_base_url
     }
@@ -201,6 +213,7 @@ def api_classes():
     search = request.args.get('search', '')
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
     base_url = request.args.get('base_url', '')
     
     # Проверяем корректность значений
@@ -215,6 +228,7 @@ def api_classes():
         search=search if search else None,
         status_variance=status_variance,
         event=event,
+        a_priznak=a_priznak,
         base_url=base_url if base_url else None
     )
     
@@ -229,6 +243,7 @@ def api_groups():
     search = request.args.get('search', '')
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
     base_url = request.args.get('base_url', '')
     
     # Проверяем корректность значений
@@ -243,6 +258,7 @@ def api_groups():
         search=search if search else None,
         status_variance=status_variance,
         event=event,
+        a_priznak=a_priznak,
         base_url=base_url if base_url else None
     )
     
@@ -257,6 +273,7 @@ def api_attributes():
     search = request.args.get('search', '')
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
     base_url = request.args.get('base_url', '')
     
     # Проверяем корректность значений
@@ -271,6 +288,7 @@ def api_attributes():
         search=search if search else None,
         status_variance=status_variance,
         event=event,
+        a_priznak=a_priznak,
         base_url=base_url if base_url else None
     )
     
@@ -284,13 +302,15 @@ def api_class_detail(class_ouid):
     search = request.args.get('search', '')
     status_variance = request.args.get('status_variance', type=int)
     event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
     
     result = data_service.get_class_details(
         class_ouid, 
         base_url if base_url else None,
         search if search else None,
         status_variance,
-        event
+        event,
+        a_priznak
     )
     return jsonify(result)
 

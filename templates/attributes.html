@@ -12,10 +12,10 @@
             </div>
             <div class="card-body">
                 <ul class="list-unstyled">
-                    <li><strong>Всего классов:</strong> {{ statistics.total_classes or 0 }}</li>
-                    <li><strong>С различиями:</strong> {{ statistics.classes_with_differences or 0 }}</li>
-                    <li><strong>В списке на миграцию:</strong> {{ statistics.classes_event_4 or 0 }}</li>
-                    <li><strong>Системных:</strong> {{ statistics.system_classes or 0 }}</li>
+                    <li><strong>Всего атрибутов:</strong> {{ statistics.total_attributes or 0 }}</li>
+                    <li><strong>Переносим миграцией:</strong> {{ statistics.attributes_priznak_1 or 0 }}</li>
+                    <li><strong>Не переносим:</strong> {{ statistics.attributes_priznak_2 or 0 }}</li>
+                    <li><strong>Переносим не миграцией:</strong> {{ statistics.attributes_priznak_3 or 0 }}</li>
                 </ul>
             </div>
         </div>
@@ -48,14 +48,12 @@
                     </div>
                     
                     <div class="mb-3">
-                        <label for="event" class="form-label">Рекомендованное действие</label>
-                        <select class="form-select" id="event" name="event">
+                        <label for="a_priznak" class="form-label">Признак</label>
+                        <select class="form-select" id="a_priznak" name="a_priznak">
                             <option value="">Все</option>
-                            <option value="0" {% if current_filters.event == 0 %}selected{% endif %}>0 - игнорировать</option>
-                            <option value="1" {% if current_filters.event == 1 %}selected{% endif %}>1 - Добавить</option>
-                            <option value="2" {% if current_filters.event == 2 %}selected{% endif %}>2 - Обновить</option>
-                            <option value="3" {% if current_filters.event == 3 %}selected{% endif %}>3 - Не в списке для переноса</option>
-                            <option value="4" {% if current_filters.event == 4 %}selected{% endif %}>4 - В списке на миграцию</option>
+                            <option value="1" {% if current_filters.a_priznak == 1 %}selected{% endif %}>1 - Переносим миграцией</option>
+                            <option value="2" {% if current_filters.a_priznak == 2 %}selected{% endif %}>2 - Не переносим</option>
+                            <option value="3" {% if current_filters.a_priznak == 3 %}selected{% endif %}>3 - Переносим не миграцией</option>
                         </select>
                     </div>
                     
@@ -129,6 +127,7 @@
                         <th>Класс</th>
                         <th>Номер</th>
                         <th>Тип</th>
+                        <th>Признак</th>
                         <th>Создан</th>
                         <th>Редактор</th>
                         <th>Действия</th>
@@ -154,6 +153,17 @@
                         </td>
                         <td>
                             <small>{{ attr.datatype_name or attr.ouiddatatype or '-' }}</small>
+                        </td>
+                        <td>
+                            {% if attr.a_priznak == 1 %}
+                                <span class="badge bg-success">Переносим миграцией</span>
+                            {% elif attr.a_priznak == 2 %}
+                                <span class="badge bg-danger">Не переносим</span>
+                            {% elif attr.a_priznak == 3 %}
+                                <span class="badge bg-warning">Переносим не миграцией</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Не определен</span>
+                            {% endif %}
                         </td>
                         <td>
                             {% if attr.a_createdate %}
@@ -192,7 +202,7 @@
                 {% if result.has_prev %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('attributes', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
+                       href="{{ url_for('attributes', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
                         <i class="bi bi-chevron-left"></i>
                     </a>
                 </li>
@@ -206,7 +216,7 @@
                     {% elif page_num == 1 or page_num == result.total_pages or (page_num >= result.current_page - 2 and page_num <= result.current_page + 2) %}
                     <li class="page-item">
                         <a class="page-link" 
-                           href="{{ url_for('attributes', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
+                           href="{{ url_for('attributes', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
                             {{ page_num }}
                         </a>
                     </li>
@@ -220,7 +230,7 @@
                 {% if result.has_next %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('attributes', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
+                       href="{{ url_for('attributes', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
                         <i class="bi bi-chevron-right"></i>
                     </a>
                 </li>

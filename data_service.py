@@ -35,7 +35,7 @@ class DataService:
     
     def get_classes(self, page: int = 1, per_page: int = 20, 
                    search: str = None, status_variance: int = None, 
-                   event: int = None, base_url: str = None, 
+                   event: int = None, a_priznak: int = None, base_url: str = None, 
                    source_base_url: str = None) -> Dict[str, Any]:
         """Получение списка классов с фильтрацией и пагинацией"""
         
@@ -53,6 +53,9 @@ class DataService:
         if event is not None:
             where_conditions.append(f"a_event = {event}")
             
+        if a_priznak is not None:
+            where_conditions.append(f"a_priznak = {a_priznak}")
+            
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
         # Общее количество записей
@@ -65,7 +68,7 @@ class DataService:
         # Основной запрос с пагинацией
         offset = (page - 1) * per_page
         main_query = f"""
-            SELECT ouid, name, description, a_status_variance, a_event,
+            SELECT ouid, name, description, a_status_variance, a_event, a_priznak,
                    a_createdate, a_editor, parent_ouid, a_issystem
             FROM sxclass_source 
             WHERE {where_clause}
@@ -95,10 +98,11 @@ class DataService:
                     'description': row[2],
                     'status_variance': row[3],
                     'event': row[4],
-                    'createdate': row[5],
-                    'editor': row[6],
-                    'parent_ouid': row[7],
-                    'issystem': row[8],
+                    'a_priznak': row[5],
+                    'createdate': row[6],
+                    'editor': row[7],
+                    'parent_ouid': row[8],
+                    'issystem': row[9],
                     'admin_url': self._build_admin_url(target_ouid or row[0], 'SXClass', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXClass', source_base_url)
                 })
@@ -124,7 +128,7 @@ class DataService:
     
     def get_groups(self, page: int = 1, per_page: int = 20, 
                    search: str = None, status_variance: int = None, 
-                   event: int = None, base_url: str = None,
+                   event: int = None, a_priznak: int = None, base_url: str = None,
                    source_base_url: str = None) -> Dict[str, Any]:
         """Получение списка групп атрибутов с фильтрацией и пагинацией"""
         
@@ -142,6 +146,9 @@ class DataService:
         if event is not None:
             where_conditions.append(f"g.a_event = {event}")
             
+        if a_priznak is not None:
+            where_conditions.append(f"g.a_priznak = {a_priznak}")
+            
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
         # Общее количество записей
@@ -158,7 +165,7 @@ class DataService:
             SELECT g.ouid, g.title, g.name, g.cls, g.num, g.forservice, g.icon, g.a_parent,
                    g.a_width, g.a_height, g.a_viewtype, g.systemclass, g.guid, g.ts,
                    g.a_issystem, g.cr_owner, g.a_createdate, g.a_editor, g.a_link_target,
-                   g.a_log, g.a_event, g.a_status_variance, c.name as class_name
+                   g.a_log, g.a_event, g.a_status_variance, g.a_priznak, c.name as class_name
             FROM sxattr_grp_source g
             LEFT JOIN sxclass_source c ON c.ouid = g.cls 
             WHERE {where_clause}
@@ -205,7 +212,8 @@ class DataService:
                     'a_log': row[19],
                     'a_event': row[20],
                     'a_status_variance': row[21],
-                    'class_name': row[22],
+                    'a_priznak': row[22],
+                    'class_name': row[23],
                     'admin_url': self._build_admin_url(target_ouid or row[0], 'SXAttrGrp', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXAttrGrp', source_base_url)
                 })
@@ -231,7 +239,7 @@ class DataService:
     
     def get_attributes(self, page: int = 1, per_page: int = 20, 
                       search: str = None, status_variance: int = None, 
-                      event: int = None, base_url: str = None,
+                      event: int = None, a_priznak: int = None, base_url: str = None,
                       source_base_url: str = None) -> Dict[str, Any]:
         """Получение списка атрибутов с фильтрацией и пагинацией"""
         
@@ -248,6 +256,9 @@ class DataService:
             
         if event is not None:
             where_conditions.append(f"a.a_event = {event}")
+            
+        if a_priznak is not None:
+            where_conditions.append(f"a.a_priznak = {a_priznak}")
             
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
@@ -277,7 +288,7 @@ class DataService:
                    a.a_mask, a.a_isdiffbranch, a.a_disabledublicate, a.a_isactualize,
                    a.columnfilter, a.a_objcrit, a.systemclass, a.guid, a.ts, a.a_issystem,
                    a.cr_owner, a.a_createdate, a.a_editor, a.a_link_target, a.a_log,
-                   a.a_event, a.a_status_variance, a.ouidsxclass, d.description as datatype_name,
+                   a.a_event, a.a_status_variance, a.a_priznak, a.ouidsxclass, d.description as datatype_name,
                    c.name as class_name
             FROM sxattr_source a
             LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
@@ -301,7 +312,7 @@ class DataService:
             attributes_list = []
             for row in attributes:
                 # Получаем OUID атрибута назначения для admin_url
-                target_ouid = self._get_target_attribute_ouid(row[81], row[1]) if base_url and row[81] else None
+                target_ouid = self._get_target_attribute_ouid(row[82], row[1]) if base_url and row[82] else None
                 
                 attributes_list.append({
                     'ouid': row[0],
@@ -383,9 +394,10 @@ class DataService:
                     'a_log': row[76],
                     'a_event': row[77],
                     'a_status_variance': row[78],
-                    'ouidsxclass': row[79],
-                    'datatype_name': row[80],
-                    'class_name': row[81],
+                    'a_priznak': row[79],
+                    'ouidsxclass': row[80],
+                    'datatype_name': row[81],
+                    'class_name': row[82],
                     'admin_url': self._build_admin_url(target_ouid or row[0], 'SXAttr', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url)
                 })
@@ -412,7 +424,7 @@ class DataService:
     def get_class_details(self, class_ouid: int, base_url: str = None, 
                          source_base_url: str = None,
                          search: str = None, status_variance: int = None, 
-                         event: int = None) -> Dict[str, Any]:
+                         event: int = None, a_priznak: int = None) -> Dict[str, Any]:
         """Получение детальной информации о классе"""
         
         # Информация о классе
@@ -423,7 +435,7 @@ class DataService:
                    a_notduplobj, a_notrepl, a_info, a_isdataintegrity, systemclass,
                    sec_link, guid, ts, a_issystem, cr_owner, a_createdate,
                    a_editor, parent_ouid, a_link_target, a_log, a_event,
-                   a_status_variance
+                   a_status_variance, a_priznak
             FROM sxclass_source 
             WHERE ouid = {class_ouid}
         """
@@ -441,13 +453,16 @@ class DataService:
         if event is not None:
             groups_where_conditions.append(f"g.a_event = {event}")
             
+        if a_priznak is not None:
+            groups_where_conditions.append(f"g.a_priznak = {a_priznak}")
+            
         groups_where_clause = " AND ".join(groups_where_conditions)
         
         groups_query = f"""
             SELECT g.ouid, g.title, g.name, g.cls, g.num, g.forservice, g.icon, g.a_parent,
                    g.a_width, g.a_height, g.a_viewtype, g.systemclass, g.guid, g.ts,
                    g.a_issystem, g.cr_owner, g.a_createdate, g.a_editor, g.a_link_target,
-                   g.a_log, g.a_event, g.a_status_variance, c.name as class_name
+                   g.a_log, g.a_event, g.a_status_variance, g.a_priznak, c.name as class_name
             FROM sxattr_grp_source g
             LEFT JOIN sxclass_source c ON c.ouid = g.cls
             WHERE {groups_where_clause}
@@ -467,6 +482,9 @@ class DataService:
         if event is not None:
             attrs_where_conditions.append(f"a.a_event = {event}")
             
+        if a_priznak is not None:
+            attrs_where_conditions.append(f"a.a_priznak = {a_priznak}")
+            
         attrs_where_clause = " AND ".join(attrs_where_conditions)
         
         attrs_query = f"""
@@ -484,7 +502,7 @@ class DataService:
                    a.a_mask, a.a_isdiffbranch, a.a_disabledublicate, a.a_isactualize,
                    a.columnfilter, a.a_objcrit, a.systemclass, a.guid, a.ts, a.a_issystem,
                    a.cr_owner, a.a_createdate, a.a_editor, a.a_link_target, a.a_log,
-                   a.a_event, a.a_status_variance, d.description as datatype_name, 
+                   a.a_event, a.a_status_variance, a.a_priznak, d.description as datatype_name, 
                    c.name as class_name
             FROM sxattr_source a
             LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
@@ -538,6 +556,7 @@ class DataService:
                 'a_log': class_row[31],
                 'a_event': class_row[32],
                 'a_status_variance': class_row[33],
+                'a_priznak': class_row[34],
                 'admin_url': self._build_admin_url(class_row[0], 'SXClass', base_url),
                 'source_admin_url': self._build_admin_url(class_row[0], 'SXClass', source_base_url)
             }
@@ -569,8 +588,9 @@ class DataService:
                     'a_log': row[19],
                     'a_event': row[20],
                     'a_status_variance': row[21],
-                    'class_name': row[22],
-                    'admin_url': self._build_admin_url(self._get_target_group_ouid(row[22], row[2]) or row[0], 'SXAttrGrp', base_url),
+                    'a_priznak': row[22],
+                    'class_name': row[23],
+                    'admin_url': self._build_admin_url(self._get_target_group_ouid(row[23], row[2]) or row[0], 'SXAttrGrp', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXAttrGrp', source_base_url)
                 })
             
@@ -658,16 +678,17 @@ class DataService:
                     'a_log': row[76],
                     'a_event': row[77],
                     'a_status_variance': row[78],
-                    'datatype_name': row[79],
-                    'class_name': row[80],
-                    'admin_url': self._build_admin_url(self._get_target_attribute_ouid(row[80], row[1]) or row[0], 'SXAttr', base_url),
+                    'a_priznak': row[79],
+                    'datatype_name': row[80],
+                    'class_name': row[81],
+                    'admin_url': self._build_admin_url(self._get_target_attribute_ouid(row[81], row[1]) or row[0], 'SXAttr', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url)
                 })
             
             # Получаем парсинг различий если есть
             differences = self.get_class_differences(class_ouid, base_url, source_base_url)
-            group_differences = self.get_group_differences(class_ouid, search, status_variance, event, base_url, source_base_url)
-            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event, base_url, source_base_url)
+            group_differences = self.get_group_differences(class_ouid, search, status_variance, event, a_priznak, base_url, source_base_url)
+            attribute_differences = self.get_attribute_differences(class_ouid, search, status_variance, event, a_priznak, base_url, source_base_url)
             
             return {
                 'class': class_info,
@@ -871,7 +892,7 @@ class DataService:
                 self.db_manager.disconnect()
     
     def get_group_differences(self, class_ouid: int, search: str = None, status_variance: int = None, 
-                             event: int = None, base_url: str = None, source_base_url: str = None, 
+                             event: int = None, a_priznak: int = None, base_url: str = None, source_base_url: str = None, 
                              skip_disconnect: bool = False) -> List[Dict[str, Any]]:
         """Парсинг различий для групп атрибутов (использует SQL из отчёт по группам.sql)"""
         
@@ -891,6 +912,9 @@ class DataService:
             where_conditions.append(f"s.a_event = {event}")
         else:
             where_conditions.append("s.A_EVENT = 4")
+            
+        if a_priznak is not None:
+            where_conditions.append(f"s.a_priznak = {a_priznak}")
         
         where_clause = " AND ".join(where_conditions)
         
@@ -1066,7 +1090,7 @@ class DataService:
                 self.db_manager.disconnect()
 
     def get_attribute_differences(self, class_ouid: int, search: str = None, status_variance: int = None, 
-                             event: int = None, base_url: str = None, source_base_url: str = None, 
+                             event: int = None, a_priznak: int = None, base_url: str = None, source_base_url: str = None, 
                              skip_disconnect: bool = False) -> List[Dict[str, Any]]:
         """Парсинг различий для атрибутов (использует SQL из отчёт по атрибутам.sql)"""
         
@@ -1088,6 +1112,9 @@ class DataService:
             where_conditions.append(f"s.a_event = {event}")
         else:
             where_conditions.append("s.A_EVENT = 0")
+            
+        if a_priznak is not None:
+            where_conditions.append(f"s.a_priznak = {a_priznak}")
         
         where_clause = " AND ".join(where_conditions)
         print(f"[DEBUG] WHERE условия для атрибутов: {where_clause}")
@@ -1203,7 +1230,9 @@ class DataService:
             SELECT 
                 COUNT(*) as total_classes,
                 COUNT(CASE WHEN a_status_variance = 2 THEN 1 END) as classes_with_differences,
-                COUNT(CASE WHEN a_event = 4 THEN 1 END) as classes_event_4,
+                COUNT(CASE WHEN a_priznak = 1 THEN 1 END) as classes_migrate,
+                COUNT(CASE WHEN a_priznak = 2 THEN 1 END) as classes_skip,
+                COUNT(CASE WHEN a_priznak = 3 THEN 1 END) as classes_manual,
                 COUNT(CASE WHEN a_issystem = 1 THEN 1 END) as system_classes
             FROM sxclass_source
         """
@@ -1218,8 +1247,10 @@ class DataService:
                 return {
                     'total_classes': row[0],
                     'classes_with_differences': row[1],
-                    'classes_event_4': row[2],
-                    'system_classes': row[3]
+                    'classes_migrate': row[2],
+                    'classes_skip': row[3],
+                    'classes_manual': row[4],
+                    'system_classes': row[5]
                 }
             return {}
             
@@ -1294,6 +1325,24 @@ class DataService:
             return 'Изменено значение'
         else:
             return 'Неизвестный тип'
+
+    def _get_priznak_name(self, priznak_value: int) -> str:
+        """Получение названия признака"""
+        mapping = {
+            1: "Переносим миграцией",
+            2: "Не переносим", 
+            3: "Переносим не миграцией"
+        }
+        return mapping.get(priznak_value, f"Неизвестно ({priznak_value})")
+        
+    def _get_priznak_badge_class(self, priznak_value: int) -> str:
+        """Получение CSS класса для badge признака"""
+        mapping = {
+            1: "bg-success",      # зеленый
+            2: "bg-danger",       # красный
+            3: "bg-warning"       # желтый
+        }
+        return mapping.get(priznak_value, "bg-secondary")  # серый по умолчанию
 
     # ===== CRUD методы для работы с исключениями =====
     

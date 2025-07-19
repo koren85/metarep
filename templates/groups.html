@@ -14,7 +14,9 @@
                 <ul class="list-unstyled">
                     <li><strong>Всего классов:</strong> {{ statistics.total_classes or 0 }}</li>
                     <li><strong>С различиями:</strong> {{ statistics.classes_with_differences or 0 }}</li>
-                    <li><strong>В списке на миграцию:</strong> {{ statistics.classes_event_4 or 0 }}</li>
+                    <li><strong>Переносим миграцией:</strong> {{ statistics.classes_migrate or 0 }}</li>
+                    <li><strong>Не переносим:</strong> {{ statistics.classes_skip or 0 }}</li>
+                    <li><strong>Переносим не миграцией:</strong> {{ statistics.classes_manual or 0 }}</li>
                     <li><strong>Системных:</strong> {{ statistics.system_classes or 0 }}</li>
                 </ul>
             </div>
@@ -54,8 +56,16 @@
                             <option value="0" {% if current_filters.event == 0 %}selected{% endif %}>0 - игнорировать</option>
                             <option value="1" {% if current_filters.event == 1 %}selected{% endif %}>1 - Добавить</option>
                             <option value="2" {% if current_filters.event == 2 %}selected{% endif %}>2 - Обновить</option>
-                            <option value="3" {% if current_filters.event == 3 %}selected{% endif %}>3 - Не в списке для переноса</option>
-                            <option value="4" {% if current_filters.event == 4 %}selected{% endif %}>4 - В списке на миграцию</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="a_priznak" class="form-label">Признак</label>
+                        <select class="form-select" id="a_priznak" name="a_priznak">
+                            <option value="">Все</option>
+                            <option value="1" {% if current_filters.a_priznak == 1 %}selected{% endif %}>1 - Переносим миграцией</option>
+                            <option value="2" {% if current_filters.a_priznak == 2 %}selected{% endif %}>2 - Не переносим</option>
+                            <option value="3" {% if current_filters.a_priznak == 3 %}selected{% endif %}>3 - Переносим не миграцией</option>
                         </select>
                     </div>
                     
@@ -188,7 +198,7 @@
                 {% if result.has_prev %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('groups', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
+                       href="{{ url_for('groups', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
                         <i class="bi bi-chevron-left"></i>
                     </a>
                 </li>
@@ -202,7 +212,7 @@
                     {% elif page_num == 1 or page_num == result.total_pages or (page_num >= result.current_page - 2 and page_num <= result.current_page + 2) %}
                     <li class="page-item">
                         <a class="page-link" 
-                           href="{{ url_for('groups', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
+                           href="{{ url_for('groups', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
                             {{ page_num }}
                         </a>
                     </li>
@@ -216,7 +226,7 @@
                 {% if result.has_next %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('groups', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
+                       href="{{ url_for('groups', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
                         <i class="bi bi-chevron-right"></i>
                     </a>
                 </li>
