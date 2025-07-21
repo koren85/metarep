@@ -1074,13 +1074,9 @@ class DataService:
             
         if status_variance is not None:
             where_conditions.append(f"s.a_status_variance = {status_variance}")
-        else:
-            where_conditions.append("s.A_STATUS_VARIANCE = 2")
             
         if event is not None:
             where_conditions.append(f"s.a_event = {event}")
-        else:
-            where_conditions.append("s.A_EVENT = 0")
             
         if a_priznak is not None:
             where_conditions.append(f"s.a_priznak = {a_priznak}")
@@ -1284,15 +1280,11 @@ class DataService:
         
         query = f"SELECT ouid FROM sxclass WHERE name = '{class_name_escaped}'"
         try:
-            if not self.db_manager.connect():
-                return None
             result = self.db_manager.execute_query(query)
             return result[0][0] if result else None
         except Exception as e:
             print(f"Ошибка получения OUID класса назначения: {e}")
             return None
-        finally:
-            self.db_manager.disconnect()
     
     def _get_target_attribute_ouid(self, class_name: str, attr_name: str) -> int:
         """Получение OUID атрибута назначения по имени класса и атрибута"""
@@ -1306,15 +1298,11 @@ class DataService:
             WHERE c.name = '{class_name_escaped}' AND a.name = '{attr_name_escaped}'
         """
         try:
-            if not self.db_manager.connect():
-                return None
             result = self.db_manager.execute_query(query)
             return result[0][0] if result else None
         except Exception as e:
             print(f"Ошибка получения OUID атрибута назначения: {e}")
             return None
-        finally:
-            self.db_manager.disconnect()
     
     def _get_target_group_ouid(self, class_name: str, group_name: str) -> int:
         """Получение OUID группы назначения по имени класса и группы"""
@@ -1328,15 +1316,11 @@ class DataService:
             WHERE c.name = '{class_name_escaped}' AND g.name = '{group_name_escaped}'
         """
         try:
-            if not self.db_manager.connect():
-                return None
             result = self.db_manager.execute_query(query)
             return result[0][0] if result else None
         except Exception as e:
             print(f"Ошибка получения OUID группы назначения: {e}")
             return None
-        finally:
-            self.db_manager.disconnect()
     
     def _get_difference_type(self, source_value: str, target_value: str) -> str:
         """Определение типа различия"""
