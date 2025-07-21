@@ -240,8 +240,8 @@ class DataService:
     def get_attributes(self, page: int = 1, per_page: int = 20, 
                       search: str = None, status_variance: int = None, 
                       event: int = None, a_priznak: int = None, base_url: str = None,
-                      source_base_url: str = None) -> Dict[str, Any]:
-        """Получение списка атрибутов с фильтрацией и пагинацией"""
+                      source_base_url: str = None, exception_action_filter: int = None) -> Dict[str, Any]:
+        """Получение списка атрибутов с фильтрацией, пагинацией и анализом исключений"""
         
         # Базовый запрос
         where_conditions = []
@@ -262,158 +262,127 @@ class DataService:
             
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
-        # Общее количество записей
-        count_query = f"""
-            SELECT COUNT(*) 
+        # Запрос для получения ВСЕХ атрибутов по фильтрам (без пагинации)
+        all_attributes_query = f"""
+            SELECT a.ouid, a.name, a.description, a.title, a.ouiddatatype, 
+                   a.ouidsxclass, a.a_event, a.a_status_variance, a.a_priznak, 
+                   a.a_log, d.description as datatype_name,
+                   c.name as class_name, c.description as class_description
             FROM sxattr_source a
             LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
             LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
             WHERE {where_clause}
-        """
-        
-        # Основной запрос с пагинацией
-        offset = (page - 1) * per_page
-        main_query = f"""
-            SELECT a.ouid, a.name, a.description, a.title, a.ouiddatatype, a.pkey, a.defvalue,
-                   a.map, a.visible, a.inlist, a.infiltr, a.length, a.istitle, a.icon, a.num,
-                   a.informs, a.agrp, a.viewtype, a.objquery, a.read_only, a.calculated,
-                   a.ctrl_width, a.near_label, a.height, a.ref_class, a.ref_attr, a.isordered,
-                   a.select_sql, a.extendedfilter, a.samerow, a.isrepl, a.iscrypt,
-                   a.addlinksql, a.dellinksql, a.search_mode, a.search_root, a.mandatory,
-                   a.a_cascade, a.a_isguid, a.a_istimestamp, a.isloading, a.isservercrypt,
-                   a.a_hierarchy, a.a_autoinc, a.a_class_descr, a.a_aliases, a.a_indexed,
-                   a.a_ext_list, a.a_cascaderep, a.a_viewlinkmn, a.a_unique, a.a_fornullval,
-                   a.a_isvirtual, a.a_sort, a.a_sign, a.a_hidegb, a.a_hidecb, a.a_hidedelb,
-                   a.a_hideedtb, a.isvaleuutitle, a.a_history, a.a_symboliclinkview,
-                   a.a_mask, a.a_isdiffbranch, a.a_disabledublicate, a.a_isactualize,
-                   a.columnfilter, a.a_objcrit, a.systemclass, a.guid, a.ts, a.a_issystem,
-                   a.cr_owner, a.a_createdate, a.a_editor, a.a_link_target, a.a_log,
-                   a.a_event, a.a_status_variance, a.a_priznak, a.ouidsxclass, d.description as datatype_name,
-                   c.name as class_name
-            FROM sxattr_source a
-            LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
-            LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
-            WHERE {where_clause}
-            ORDER BY a.title, a.name
-            LIMIT {per_page} OFFSET {offset}
+            ORDER BY c.name, a.title, a.name
         """
         
         try:
             if not self.db_manager.connect():
                 return {"error": "Ошибка подключения к БД"}
                 
-            # Получаем общее количество
-            total_count = int(self.db_manager.execute_query(count_query)[0][0])
+            # Получаем ВСЕ атрибуты по фильтрам
+            all_attributes = self.db_manager.execute_query(all_attributes_query)
+            print(f"[DEBUG] Total attributes found: {len(all_attributes)}")
             
-            # Получаем данные
-            attributes = self.db_manager.execute_query(main_query)
+            # Анализируем исключения для всех атрибутов и группируем по классам
+            classes_data = {}
+            total_statistics = {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
             
-            # Преобразуем в словари
-            attributes_list = []
-            for row in attributes:
-                # Получаем OUID атрибута назначения для admin_url
-                target_ouid = self._get_target_attribute_ouid(row[82], row[1]) if base_url and row[82] else None
+            for row in all_attributes:
+                class_name = row[11] or 'Без класса'
+                class_description = row[12] or ''
+                class_ouid = row[5]
                 
-                attributes_list.append({
+                # Инициализируем данные класса если еще нет
+                if class_name not in classes_data:
+                    classes_data[class_name] = {
+                        'class_name': class_name,
+                        'class_description': class_description,
+                        'class_ouid': class_ouid,
+                        'attributes': {'ignore_list': [], 'update_list': [], 'no_action_list': []},
+                        'statistics': {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
+                    }
+                
+                # Временно отключаем сложный анализ исключений
+                exception_actions = []
+                overall_action = 0  # По умолчанию игнорировать
+                
+                # Получаем OUID атрибута назначения для admin_url
+                target_ouid = self._get_target_attribute_ouid(row[11], row[1]) if base_url and row[11] else None
+                
+                attr_data = {
                     'ouid': row[0],
                     'name': row[1],
                     'description': row[2],
                     'title': row[3],
                     'ouiddatatype': row[4],
-                    'pkey': row[5],
-                    'defvalue': row[6],
-                    'map': row[7],
-                    'visible': row[8],
-                    'inlist': row[9],
-                    'infiltr': row[10],
-                    'length': row[11],
-                    'istitle': row[12],
-                    'icon': row[13],
-                    'num': row[14],
-                    'informs': row[15],
-                    'agrp': row[16],
-                    'viewtype': row[17],
-                    'objquery': row[18],
-                    'read_only': row[19],
-                    'calculated': row[20],
-                    'ctrl_width': row[21],
-                    'near_label': row[22],
-                    'height': row[23],
-                    'ref_class': row[24],
-                    'ref_attr': row[25],
-                    'isordered': row[26],
-                    'select_sql': row[27],
-                    'extendedfilter': row[28],
-                    'samerow': row[29],
-                    'isrepl': row[30],
-                    'iscrypt': row[31],
-                    'addlinksql': row[32],
-                    'dellinksql': row[33],
-                    'search_mode': row[34],
-                    'search_root': row[35],
-                    'mandatory': row[36],
-                    'a_cascade': row[37],
-                    'a_isguid': row[38],
-                    'a_istimestamp': row[39],
-                    'isloading': row[40],
-                    'isservercrypt': row[41],
-                    'a_hierarchy': row[42],
-                    'a_autoinc': row[43],
-                    'a_class_descr': row[44],
-                    'a_aliases': row[45],
-                    'a_indexed': row[46],
-                    'a_ext_list': row[47],
-                    'a_cascaderep': row[48],
-                    'a_viewlinkmn': row[49],
-                    'a_unique': row[50],
-                    'a_fornullval': row[51],
-                    'a_isvirtual': row[52],
-                    'a_sort': row[53],
-                    'a_sign': row[54],
-                    'a_hidegb': row[55],
-                    'a_hidecb': row[56],
-                    'a_hidedelb': row[57],
-                    'a_hideedtb': row[58],
-                    'isvaleuutitle': row[59],
-                    'a_history': row[60],
-                    'a_symboliclinkview': row[61],
-                    'a_mask': row[62],
-                    'a_isdiffbranch': row[63],
-                    'a_disabledublicate': row[64],
-                    'a_isactualize': row[65],
-                    'columnfilter': row[66],
-                    'a_objcrit': row[67],
-                    'systemclass': row[68],
-                    'guid': row[69],
-                    'ts': row[70],
-                    'a_issystem': row[71],
-                    'cr_owner': row[72],
-                    'a_createdate': row[73],
-                    'a_editor': row[74],
-                    'a_link_target': row[75],
-                    'a_log': row[76],
-                    'a_event': row[77],
-                    'a_status_variance': row[78],
-                    'a_priznak': row[79],
-                    'ouidsxclass': row[80],
-                    'datatype_name': row[81],
-                    'class_name': row[82],
+                    'ouidsxclass': row[5],
+                    'a_event': row[6],
+                    'a_status_variance': row[7],
+                    'a_priznak': row[8],
+                    'datatype_name': row[10],
+                    'class_name': row[11],
+                    'class_description': row[12],
                     'admin_url': self._build_admin_url(target_ouid or row[0], 'SXAttr', base_url),
-                    'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url)
-                })
+                    'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url),
+                    'exception_actions': exception_actions,
+                    'overall_action': overall_action,
+                    'overall_action_name': self._get_action_name(overall_action)
+                }
+                
+                # Группируем по действиям внутри класса
+                if overall_action == 0:
+                    classes_data[class_name]['attributes']['ignore_list'].append(attr_data)
+                    classes_data[class_name]['statistics']['ignore_count'] += 1
+                    total_statistics['ignore_count'] += 1
+                elif overall_action == 2:
+                    classes_data[class_name]['attributes']['update_list'].append(attr_data)
+                    classes_data[class_name]['statistics']['update_count'] += 1
+                    total_statistics['update_count'] += 1
+                else:
+                    classes_data[class_name]['attributes']['no_action_list'].append(attr_data)
+                    classes_data[class_name]['statistics']['no_action_count'] += 1
+                    total_statistics['no_action_count'] += 1
             
-            # Убеждаемся что per_page тоже число
+            # Применяем фильтр по действиям исключений если задан
+            if exception_action_filter is not None:
+                filtered_classes_data = {}
+                for class_name, class_data in classes_data.items():
+                    if exception_action_filter == 0 and class_data['statistics']['ignore_count'] > 0:
+                        filtered_classes_data[class_name] = class_data
+                    elif exception_action_filter == 2 and class_data['statistics']['update_count'] > 0:
+                        filtered_classes_data[class_name] = class_data
+                    elif exception_action_filter == -1 and class_data['statistics']['no_action_count'] > 0:  # -1 для "без действия"
+                        filtered_classes_data[class_name] = class_data
+                classes_data = filtered_classes_data
+            
+            # Применяем пагинацию к классам
+            class_names = list(classes_data.keys())
+            total_classes = len(class_names)
+            total_attributes_count = len(all_attributes)
+            
+            # Пагинация по классам
             per_page = int(per_page)
-            total_pages = math.ceil(total_count / per_page)
+            offset = (page - 1) * per_page
+            paginated_class_names = class_names[offset:offset + per_page]
+            
+            paginated_classes_data = {name: classes_data[name] for name in paginated_class_names}
+            
+            total_pages = math.ceil(total_classes / per_page) if total_classes > 0 else 0
+            
+            print(f"[DEBUG] Total classes: {total_classes}, paginated: {len(paginated_classes_data)}")
+            print(f"[DEBUG] Statistics: {total_statistics}")
             
             return {
-                'attributes': attributes_list,
-                'total_count': total_count,
+                'classes': paginated_classes_data,
+                'total_count': total_attributes_count,
+                'total_classes': total_classes,
                 'total_pages': total_pages,
                 'current_page': page,
                 'per_page': per_page,
                 'has_prev': page > 1,
-                'has_next': page < total_pages
+                'has_next': page < total_pages,
+                'statistics': total_statistics,
+                'exception_action_filter': exception_action_filter
             }
             
         except Exception as e:
@@ -1237,22 +1206,65 @@ class DataService:
             FROM sxclass_source
         """
         
+        attrs_stats_query = """
+            SELECT 
+                COUNT(*) as total_attributes,
+                COUNT(CASE WHEN a_priznak = 1 THEN 1 END) as attributes_priznak_1,
+                COUNT(CASE WHEN a_priznak = 2 THEN 1 END) as attributes_priznak_2,
+                COUNT(CASE WHEN a_priznak = 3 THEN 1 END) as attributes_priznak_3
+            FROM sxattr_source
+        """
+        
+        groups_stats_query = """
+            SELECT 
+                COUNT(*) as total_groups,
+                COUNT(CASE WHEN a_priznak = 1 THEN 1 END) as groups_priznak_1,
+                COUNT(CASE WHEN a_priznak = 2 THEN 1 END) as groups_priznak_2,
+                COUNT(CASE WHEN a_priznak = 3 THEN 1 END) as groups_priznak_3
+            FROM sxattr_grp_source
+        """
+        
         try:
             if not self.db_manager.connect():
                 return {}
             
+            # Статистика классов
             result = self.db_manager.execute_query(stats_query)
+            stats = {}
             if result:
                 row = result[0]
-                return {
+                stats.update({
                     'total_classes': row[0],
                     'classes_with_differences': row[1],
                     'classes_migrate': row[2],
                     'classes_skip': row[3],
                     'classes_manual': row[4],
                     'system_classes': row[5]
-                }
-            return {}
+                })
+            
+            # Статистика атрибутов
+            result = self.db_manager.execute_query(attrs_stats_query)
+            if result:
+                row = result[0]
+                stats.update({
+                    'total_attributes': row[0],
+                    'attributes_priznak_1': row[1],
+                    'attributes_priznak_2': row[2],
+                    'attributes_priznak_3': row[3]
+                })
+            
+            # Статистика групп
+            result = self.db_manager.execute_query(groups_stats_query)
+            if result:
+                row = result[0]
+                stats.update({
+                    'total_groups': row[0],
+                    'groups_priznak_1': row[1],
+                    'groups_priznak_2': row[2],
+                    'groups_priznak_3': row[3]
+                })
+            
+            return stats
             
         except Exception as e:
             print(f"Ошибка получения статистики: {e}")
@@ -1267,11 +1279,14 @@ class DataService:
     
     def _get_target_class_ouid(self, class_name: str) -> int:
         """Получение OUID класса назначения по имени"""
-        query = "SELECT ouid FROM sxclass WHERE name = %s"
+        # Экранируем одинарные кавычки для безопасности
+        class_name_escaped = class_name.replace("'", "''") if class_name else ''
+        
+        query = f"SELECT ouid FROM sxclass WHERE name = '{class_name_escaped}'"
         try:
             if not self.db_manager.connect():
                 return None
-            result = self.db_manager.execute_query(query, [class_name])
+            result = self.db_manager.execute_query(query)
             return result[0][0] if result else None
         except Exception as e:
             print(f"Ошибка получения OUID класса назначения: {e}")
@@ -1281,15 +1296,19 @@ class DataService:
     
     def _get_target_attribute_ouid(self, class_name: str, attr_name: str) -> int:
         """Получение OUID атрибута назначения по имени класса и атрибута"""
-        query = """
+        # Экранируем одинарные кавычки для безопасности
+        class_name_escaped = class_name.replace("'", "''") if class_name else ''
+        attr_name_escaped = attr_name.replace("'", "''") if attr_name else ''
+        
+        query = f"""
             SELECT a.ouid FROM sxattr a
             JOIN sxclass c ON c.ouid = a.ouidsxclass
-            WHERE c.name = %s AND a.name = %s
+            WHERE c.name = '{class_name_escaped}' AND a.name = '{attr_name_escaped}'
         """
         try:
             if not self.db_manager.connect():
                 return None
-            result = self.db_manager.execute_query(query, [class_name, attr_name])
+            result = self.db_manager.execute_query(query)
             return result[0][0] if result else None
         except Exception as e:
             print(f"Ошибка получения OUID атрибута назначения: {e}")
@@ -1299,15 +1318,19 @@ class DataService:
     
     def _get_target_group_ouid(self, class_name: str, group_name: str) -> int:
         """Получение OUID группы назначения по имени класса и группы"""
-        query = """
+        # Экранируем одинарные кавычки для безопасности
+        class_name_escaped = class_name.replace("'", "''") if class_name else ''
+        group_name_escaped = group_name.replace("'", "''") if group_name else ''
+        
+        query = f"""
             SELECT g.ouid FROM sxattr_grp g
             JOIN sxclass c ON c.ouid = g.cls
-            WHERE c.name = %s AND g.name = %s
+            WHERE c.name = '{class_name_escaped}' AND g.name = '{group_name_escaped}'
         """
         try:
             if not self.db_manager.connect():
                 return None
-            result = self.db_manager.execute_query(query, [class_name, group_name])
+            result = self.db_manager.execute_query(query)
             return result[0][0] if result else None
         except Exception as e:
             print(f"Ошибка получения OUID группы назначения: {e}")
@@ -1716,6 +1739,110 @@ class DataService:
             2: "Обновить"
         }
         return action_names.get(action_int, "Неизвестно")
+    
+    def _analyze_attribute_exceptions(self, attr_ouid: int, attr_name: str, a_log: str, skip_disconnect: bool = False) -> List[Dict[str, Any]]:
+        """Анализ исключений для конкретного атрибута на основе его a_log"""
+        
+        if not a_log or a_log.strip() == '':
+            return []
+        
+        try:
+            # Парсим a_log как делается в get_attribute_differences
+            attr_blocks_query = f"""
+                WITH source_data AS (
+                    SELECT
+                        {attr_ouid} as ouid,
+                        '{attr_name}' as name,
+                        $${a_log}$$ as a_log
+                ),
+                attr_blocks AS (
+                    SELECT
+                        s.ouid,
+                        s.name,
+                        trim(split_part(attr_block, E'\\n', 1)) as attribute_name,
+                        COALESCE(
+                            trim(
+                                split_part(
+                                    substring(attr_block from 'source[[:space:]]*=[[:space:]]*(.*)'),
+                                    'target =',
+                                    1
+                                )
+                            ),
+                            ''
+                        ) as source_value,
+                        COALESCE(
+                            trim(regexp_replace(
+                                substring(attr_block from 'target[[:space:]]*=[[:space:]]*([^\\n]*(?:\\n[[:space:]]+[^\\n]*)*?)(?=\\n[^[:space:]]|$)'),
+                                '^[[:space:]]*', '', 'g'
+                            )),
+                            ''
+                        ) as target_value
+                    FROM source_data s
+                    CROSS JOIN LATERAL (
+                        SELECT unnest(
+                            regexp_split_to_array(
+                                s.a_log,
+                                E'(?=\\n[^[:space:]\\n])'
+                            )
+                        ) AS attr_block
+                    ) attr_blocks
+                    WHERE attr_block ~ 'source[[:space:]]*='
+                        AND trim(split_part(attr_block, E'\\n', 1)) != ''
+                        AND length(trim(attr_block)) > 0
+                )
+                SELECT
+                    ouid,
+                    name,
+                    attribute_name,
+                    source_value,
+                    target_value
+                FROM attr_blocks
+                WHERE attribute_name IS NOT NULL
+                    AND attribute_name != ''
+                ORDER BY attribute_name
+            """
+            
+            result = self.db_manager.execute_query(attr_blocks_query)
+            
+            exception_actions = []
+            for row in result:
+                ouid, name, attribute_name, source_value, target_value = row
+                
+                # Получаем действие исключения для этого свойства
+                exception_action = self.get_exception_action('attribute', attribute_name, skip_disconnect=True)
+                
+                exception_actions.append({
+                    'attribute_name': attribute_name,
+                    'source_value': source_value,
+                    'target_value': target_value,
+                    'exception_action': exception_action,
+                    'exception_action_name': self._get_action_name(exception_action)
+                })
+            
+            return exception_actions
+            
+        except Exception as e:
+            print(f"Ошибка анализа исключений для атрибута {attr_ouid}: {e}")
+            return []
+    
+    def _get_overall_exception_action(self, exception_actions: List[Dict[str, Any]]) -> int:
+        """Определение общего действия для атрибута на основе всех его исключений"""
+        
+        if not exception_actions:
+            return 0  # По умолчанию игнорировать
+        
+        # Если есть хотя бы одно действие "Обновить" (2), то общее действие - "Обновить"
+        for action_data in exception_actions:
+            if action_data.get('exception_action', 0) == 2:
+                return 2
+        
+        # Если есть хотя бы одно действие "Игнорировать" (0), то общее действие - "Игнорировать"
+        for action_data in exception_actions:
+            if action_data.get('exception_action', 0) == 0:
+                return 0
+        
+        # По умолчанию
+        return 0
     
     # ===== Методы для управления действиями =====
     

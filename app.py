@@ -134,6 +134,7 @@ def attributes():
     a_priznak = request.args.get('a_priznak', type=int)
     base_url = request.args.get('base_url', '')
     source_base_url = request.args.get('source_base_url', '')
+    exception_action_filter = request.args.get('exception_action_filter', type=int)
     
     # Проверяем корректность значений
     if page < 1:
@@ -150,7 +151,8 @@ def attributes():
         event=event,
         a_priznak=a_priznak,
         base_url=base_url if base_url else None,
-        source_base_url=source_base_url if source_base_url else None
+        source_base_url=source_base_url if source_base_url else None,
+        exception_action_filter=exception_action_filter
     )
     
     # Получаем статистику
@@ -165,7 +167,8 @@ def attributes():
                              'event': event,
                              'a_priznak': a_priznak,
                              'base_url': base_url,
-                             'source_base_url': source_base_url
+                             'source_base_url': source_base_url,
+                             'exception_action_filter': exception_action_filter
                          })
 
 @app.route('/class/<int:class_ouid>')

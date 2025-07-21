@@ -48,6 +48,16 @@
                     </div>
                     
                     <div class="mb-3">
+                        <label for="event" class="form-label">Рекомендованное действие</label>
+                        <select class="form-select" id="event" name="event">
+                            <option value="">Все</option>
+                            <option value="0" {% if current_filters.event == 0 %}selected{% endif %}>0 - игнорировать</option>
+                            <option value="1" {% if current_filters.event == 1 %}selected{% endif %}>1 - Добавить</option>
+                            <option value="2" {% if current_filters.event == 2 %}selected{% endif %}>2 - Обновить</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
                         <label for="a_priznak" class="form-label">Признак</label>
                         <select class="form-select" id="a_priznak" name="a_priznak">
                             <option value="">Все</option>
@@ -105,55 +115,199 @@
     <div class="col-md-9">
         <!-- Заголовок -->
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1>Атрибуты</h1>
+            <h1>Анализ атрибутов по исключениям</h1>
             <div class="text-muted">
-                {% if result.attributes %}
-                    Показано {{ result.attributes|length }} из {{ result.total_count }} атрибутов
+                {% if result.total_count > 0 %}
+                    Всего {{ result.total_count }} атрибутов в {{ result.total_classes }} классах
                 {% else %}
                     Атрибутов не найдено
                 {% endif %}
             </div>
         </div>
         
-        <!-- Таблица атрибутов -->
-        {% if result.attributes %}
+        <!-- Кнопки управления -->
+        <div class="mb-3">
+            <button id="expand-all" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-arrows-expand"></i> Развернуть все
+            </button>
+            <button id="collapse-all" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-arrows-collapse"></i> Свернуть все
+            </button>
+            {% if current_filters.exception_action_filter is not none %}
+            <a href="{{ url_for('attributes', search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}" 
+               class="btn btn-outline-warning btn-sm">
+                <i class="bi bi-x-circle"></i> Сбросить фильтр действий
+            </a>
+            {% endif %}
+        </div>
+        
+        <!-- Кликабельная статистика анализа -->
+        {% if result.statistics %}
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=2) }}" 
+                   class="text-decoration-none">
+                    <div class="card text-center stats-card {% if current_filters.exception_action_filter == 2 %}border-info{% endif %}">
+                        <div class="card-body">
+                            <h5 class="card-title text-info">{{ result.statistics.update_count }}</h5>
+                            <p class="card-text">Обновить</p>
+                            {% if current_filters.exception_action_filter == 2 %}
+                                <small class="text-info"><i class="bi bi-funnel-fill"></i> Активный фильтр</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=0) }}" 
+                   class="text-decoration-none">
+                    <div class="card text-center stats-card {% if current_filters.exception_action_filter == 0 %}border-secondary{% endif %}">
+                        <div class="card-body">
+                            <h5 class="card-title text-secondary">{{ result.statistics.ignore_count }}</h5>
+                            <p class="card-text">Игнорировать</p>
+                            {% if current_filters.exception_action_filter == 0 %}
+                                <small class="text-secondary"><i class="bi bi-funnel-fill"></i> Активный фильтр</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-md-4">
+                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=-1) }}" 
+                   class="text-decoration-none">
+                    <div class="card text-center stats-card {% if current_filters.exception_action_filter == -1 %}border-warning{% endif %}">
+                        <div class="card-body">
+                            <h5 class="card-title text-muted">{{ result.statistics.no_action_count }}</h5>
+                            <p class="card-text">Без действия</p>
+                            {% if current_filters.exception_action_filter == -1 %}
+                                <small class="text-warning"><i class="bi bi-funnel-fill"></i> Активный фильтр</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Группировка атрибутов по классам -->
+        {% if result.classes %}
+        <div class="accordion" id="classesAccordion">
+            {% for class_name, class_data in result.classes.items() %}
+            <div class="accordion-item mb-3">
+                <h2 class="accordion-header" id="heading-{{ loop.index }}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                            data-bs-target="#collapse-{{ loop.index }}" aria-expanded="false" 
+                            aria-controls="collapse-{{ loop.index }}">
+                        <div class="w-100">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ class_data.class_name }}</strong>
+                                    {% if class_data.class_description %}
+                                        <br><small class="text-muted">{{ class_data.class_description }}</small>
+                                    {% endif %}
+                                </div>
+                                <div class="me-3">
+                                    {% if class_data.statistics.update_count > 0 %}
+                                        <span class="badge bg-info me-1">{{ class_data.statistics.update_count }} обновить</span>
+                                    {% endif %}
+                                    {% if class_data.statistics.ignore_count > 0 %}
+                                        <span class="badge bg-secondary me-1">{{ class_data.statistics.ignore_count }} игнорировать</span>
+                                    {% endif %}
+                                    {% if class_data.statistics.no_action_count > 0 %}
+                                        <span class="badge bg-light text-dark">{{ class_data.statistics.no_action_count }} без действия</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </button>
+                </h2>
+                <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse" 
+                     aria-labelledby="heading-{{ loop.index }}" data-bs-parent="#classesAccordion">
+                    <div class="accordion-body p-0">
+                        
+                        <!-- Атрибуты для обновления -->
+                        {% if class_data.attributes.update_list|length > 0 %}
+                        <div class="border-start border-info border-3 bg-light">
+                            <div class="p-3 bg-info text-white">
+                                <h6 class="mb-0"><i class="bi bi-arrow-clockwise"></i> Атрибуты для обновления ({{ class_data.attributes.update_list|length }})</h6>
+                            </div>
         <div class="table-responsive">
-            <table class="table table-striped table-hover">
-                <thead class="table-dark">
+                                <table class="table table-striped mb-0">
+                                    <thead class="table-light">
                     <tr>
                         <th>ID</th>
                         <th>Имя</th>
                         <th>Заголовок</th>
-                        <th>Класс</th>
-                        <th>Номер</th>
                         <th>Тип</th>
                         <th>Признак</th>
-                        <th>Создан</th>
-                        <th>Редактор</th>
-                        <th>Действия</th>
+                                            <th>Админка</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for attr in result.attributes %}
+                                        {% for attr in class_data.attributes.update_list %}
                     <tr>
-                        <td>
-                            <code>{{ attr.ouid }}</code>
+                                            <td><code>{{ attr.ouid }}</code></td>
+                                            <td><strong>{{ attr.name or 'Без имени' }}</strong></td>
+                                            <td>{{ attr.title or '-' }}</td>
+                                            <td><small>{{ attr.datatype_name or '-' }}</small></td>
+                                            <td>
+                                                {% if attr.a_priznak == 1 %}
+                                                    <span class="badge bg-success">Переносим миграцией</span>
+                                                {% elif attr.a_priznak == 2 %}
+                                                    <span class="badge bg-danger">Не переносим</span>
+                                                {% elif attr.a_priznak == 3 %}
+                                                    <span class="badge bg-warning">Переносим не миграцией</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">Не определен</span>
+                                                {% endif %}
                         </td>
                         <td>
-                            <strong>{{ attr.name or 'Без имени' }}</strong>
+                                                <div class="btn-group btn-group-sm">
+                                                    <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
+                                                            class="btn btn-outline-info" 
+                                                            title="Открыть в админке источника">
+                                                        <i class="bi bi-arrow-up-left"></i>
+                                                    </button>
+                                                    <button onclick="openAdmin('{{ attr.admin_url }}')" 
+                                                            class="btn btn-outline-success" 
+                                                            title="Открыть в админке назначения">
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </button>
+                                                </div>
                         </td>
-                        <td>
-                            {{ attr.title or '-' }}
-                        </td>
-                        <td>
-                            <code>{{ attr.ouidsxclass or '-' }}</code>
-                        </td>
-                        <td>
-                            {{ attr.num or '-' }}
-                        </td>
-                        <td>
-                            <small>{{ attr.datatype_name or attr.ouiddatatype or '-' }}</small>
-                        </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Атрибуты для игнорирования -->
+                        {% if class_data.attributes.ignore_list|length > 0 %}
+                        <div class="border-start border-secondary border-3 bg-light">
+                            <div class="p-3 bg-secondary text-white">
+                                <h6 class="mb-0"><i class="bi bi-eye-slash"></i> Атрибуты для игнорирования ({{ class_data.attributes.ignore_list|length }})</h6>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-striped mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Имя</th>
+                                            <th>Заголовок</th>
+                                            <th>Тип</th>
+                                            <th>Признак</th>
+                                            <th>Админка</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for attr in class_data.attributes.ignore_list %}
+                                        <tr>
+                                            <td><code>{{ attr.ouid }}</code></td>
+                                            <td><strong>{{ attr.name or 'Без имени' }}</strong></td>
+                                            <td>{{ attr.title or '-' }}</td>
+                                            <td><small>{{ attr.datatype_name or '-' }}</small></td>
                         <td>
                             {% if attr.a_priznak == 1 %}
                                 <span class="badge bg-success">Переносим миграцией</span>
@@ -166,14 +320,62 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if attr.a_createdate %}
-                                <small class="text-muted">{{ attr.a_createdate }}</small>
+                                                <div class="btn-group btn-group-sm">
+                                                    <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
+                                                            class="btn btn-outline-info" 
+                                                            title="Открыть в админке источника">
+                                                        <i class="bi bi-arrow-up-left"></i>
+                                                    </button>
+                                                    <button onclick="openAdmin('{{ attr.admin_url }}')" 
+                                                            class="btn btn-outline-success" 
+                                                            title="Открыть в админке назначения">
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Атрибуты без действий -->
+                        {% if class_data.attributes.no_action_list|length > 0 %}
+                        <div class="border-start border-warning border-3 bg-light">
+                            <div class="p-3 bg-light">
+                                <h6 class="mb-0 text-muted"><i class="bi bi-question-circle"></i> Атрибуты без действий ({{ class_data.attributes.no_action_list|length }})</h6>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-striped mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Имя</th>
+                                            <th>Заголовок</th>
+                                            <th>Тип</th>
+                                            <th>Признак</th>
+                                            <th>Админка</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for attr in class_data.attributes.no_action_list %}
+                                        <tr>
+                                            <td><code>{{ attr.ouid }}</code></td>
+                                            <td><strong>{{ attr.name or 'Без имени' }}</strong></td>
+                                            <td>{{ attr.title or '-' }}</td>
+                                            <td><small>{{ attr.datatype_name or '-' }}</small></td>
+                                            <td>
+                                                {% if attr.a_priznak == 1 %}
+                                                    <span class="badge bg-success">Переносим миграцией</span>
+                                                {% elif attr.a_priznak == 2 %}
+                                                    <span class="badge bg-danger">Не переносим</span>
+                                                {% elif attr.a_priznak == 3 %}
+                                                    <span class="badge bg-warning">Переносим не миграцией</span>
                             {% else %}
-                                <small class="text-muted">-</small>
+                                                    <span class="badge bg-secondary">Не определен</span>
                             {% endif %}
-                        </td>
-                        <td>
-                            <small class="text-muted">{{ attr.a_editor or '-' }}</small>
                         </td>
                         <td>
                             <div class="btn-group btn-group-sm">
@@ -193,6 +395,14 @@
                     {% endfor %}
                 </tbody>
             </table>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
         </div>
         
         <!-- Пагинация -->
@@ -202,7 +412,7 @@
                 {% if result.has_prev %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('attributes', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
+                       href="{{ url_for('attributes', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter) }}">
                         <i class="bi bi-chevron-left"></i>
                     </a>
                 </li>
@@ -216,7 +426,7 @@
                     {% elif page_num == 1 or page_num == result.total_pages or (page_num >= result.current_page - 2 and page_num <= result.current_page + 2) %}
                     <li class="page-item">
                         <a class="page-link" 
-                           href="{{ url_for('attributes', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
+                           href="{{ url_for('attributes', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter) }}">
                             {{ page_num }}
                         </a>
                     </li>
@@ -230,7 +440,7 @@
                 {% if result.has_next %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('attributes', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}">
+                       href="{{ url_for('attributes', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter) }}">
                         <i class="bi bi-chevron-right"></i>
                     </a>
                 </li>
@@ -241,15 +451,79 @@
         
         {% else %}
         <div class="alert alert-info">
-            <i class="bi bi-info-circle"></i> Атрибутов не найдено
+            <i class="bi bi-info-circle"></i> 
+            <strong>Классов с атрибутами не найдено</strong><br>
+            {% if current_filters.exception_action_filter is not none %}
+                Попробуйте сбросить фильтр по действиям исключений или изменить другие параметры фильтра.
+            {% else %}
+                Попробуйте изменить параметры фильтра или сбросить все фильтры.
+            {% endif %}
         </div>
         {% endif %}
     </div>
 </div>
 
+<style>
+.stats-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+}
+
+.stats-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: #e9ecef;
+}
+
+.border-start {
+    border-left-width: 3px !important;
+}
+</style>
+
 <script>
 function openAdmin(url) {
     window.open(url, '_blank', 'width=1200,height=800');
 }
+
+// Управление аккордеоном классов
+document.addEventListener('DOMContentLoaded', function() {
+    const expandAllBtn = document.getElementById('expand-all');
+    const collapseAllBtn = document.getElementById('collapse-all');
+    
+    if (expandAllBtn) {
+        expandAllBtn.addEventListener('click', function() {
+            const allCollapses = document.querySelectorAll('#classesAccordion .accordion-collapse');
+            const allButtons = document.querySelectorAll('#classesAccordion .accordion-button');
+            
+            allCollapses.forEach(function(collapse) {
+                const bsCollapse = new bootstrap.Collapse(collapse, {show: true});
+            });
+            
+            allButtons.forEach(function(button) {
+                button.classList.remove('collapsed');
+                button.setAttribute('aria-expanded', 'true');
+            });
+        });
+    }
+    
+    if (collapseAllBtn) {
+        collapseAllBtn.addEventListener('click', function() {
+            const allCollapses = document.querySelectorAll('#classesAccordion .accordion-collapse');
+            const allButtons = document.querySelectorAll('#classesAccordion .accordion-button');
+            
+            allCollapses.forEach(function(collapse) {
+                const bsCollapse = new bootstrap.Collapse(collapse, {hide: true});
+            });
+            
+            allButtons.forEach(function(button) {
+                button.classList.add('collapsed');
+                button.setAttribute('aria-expanded', 'false');
+            });
+        });
+    }
+});
 </script>
 {% endblock %} 
