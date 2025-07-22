@@ -61,3 +61,5 @@ migration_output/
 # Temporary files
 tmp/
 temp/ 
+
+.cursor
