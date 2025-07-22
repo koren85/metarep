@@ -99,6 +99,32 @@
                         <div class="form-text">URL для ссылок на админку источника</div>
                     </div>
                     
+                    <!-- Фильтр по направлению изменений Source/Target -->
+                    <div class="mb-3">
+                        <label for="source_target_filter" class="form-label">Направление изменений</label>
+                        <select class="form-select" id="source_target_filter" name="source_target_filter">
+                            <option value="">Все записи</option>
+                            <option value="source_to_null" {% if current_filters.source_target_filter == 'source_to_null' %}selected{% endif %}>
+                                Source → Null (удаление)
+                            </option>
+                            <option value="null_to_target" {% if current_filters.source_target_filter == 'null_to_target' %}selected{% endif %}>
+                                Null → Target (добавление)
+                            </option>
+                            <option value="source_to_target" {% if current_filters.source_target_filter == 'source_to_target' %}selected{% endif %}>
+                                Source → Target (изменение)
+                            </option>
+                            <option value="has_source" {% if current_filters.source_target_filter == 'has_source' %}selected{% endif %}>
+                                Есть Source (любые с исходным значением)
+                            </option>
+                            <option value="has_target" {% if current_filters.source_target_filter == 'has_target' %}selected{% endif %}>
+                                Есть Target (любые с целевым значением)
+                            </option>
+                        </select>
+                        <div class="form-text">
+                            Фильтрация по типу изменений в анализе исключений
+                        </div>
+                    </div>
+                    
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary">
                             <i class="bi bi-search"></i> Применить
@@ -149,7 +175,7 @@
                 <small><i class="bi bi-info-circle"></i> Быстрый режим - без анализа исключений для максимальной скорости</small>
             </div>
             {% else %}
-            <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}" 
+            <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, source_target_filter=current_filters.source_target_filter) }}" 
                class="btn btn-secondary">
                 <i class="bi bi-arrow-left"></i> Быстрый режим
             </a>
@@ -163,7 +189,7 @@
         {% if result.analyze_exceptions and result.statistics %}
         <div class="row mb-4">
             <div class="col-md-4">
-                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=2, analyze_exceptions='true') }}" 
+                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=2, analyze_exceptions='true', source_target_filter=current_filters.source_target_filter) }}" 
                    class="text-decoration-none">
                     <div class="card text-center stats-card {% if current_filters.exception_action_filter == 2 %}border-info{% endif %}">
                         <div class="card-body">
@@ -177,7 +203,7 @@
                 </a>
             </div>
             <div class="col-md-4">
-                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=0, analyze_exceptions='true') }}" 
+                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=0, analyze_exceptions='true', source_target_filter=current_filters.source_target_filter) }}" 
                    class="text-decoration-none">
                     <div class="card text-center stats-card {% if current_filters.exception_action_filter == 0 %}border-secondary{% endif %}">
                         <div class="card-body">
@@ -191,7 +217,7 @@
                 </a>
             </div>
             <div class="col-md-4">
-                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=-1, analyze_exceptions='true') }}" 
+                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=-1, analyze_exceptions='true', source_target_filter=current_filters.source_target_filter) }}" 
                    class="text-decoration-none">
                     <div class="card text-center stats-card {% if current_filters.exception_action_filter == -1 %}border-warning{% endif %}">
                         <div class="card-body">
@@ -528,7 +554,7 @@
                 {% if result.has_prev %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('attributes', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter, analyze_exceptions=current_filters.analyze_exceptions) }}">
+                       href="{{ url_for('attributes', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter, analyze_exceptions=current_filters.analyze_exceptions, source_target_filter=current_filters.source_target_filter) }}">
                         <i class="bi bi-chevron-left"></i>
                     </a>
                 </li>
@@ -542,7 +568,7 @@
                     {% elif page_num == 1 or page_num == result.total_pages or (page_num >= result.current_page - 2 and page_num <= result.current_page + 2) %}
                     <li class="page-item">
                         <a class="page-link" 
-                           href="{{ url_for('attributes', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter, analyze_exceptions=current_filters.analyze_exceptions) }}">
+                           href="{{ url_for('attributes', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter, analyze_exceptions=current_filters.analyze_exceptions, source_target_filter=current_filters.source_target_filter) }}">
                             {{ page_num }}
                         </a>
                     </li>
@@ -556,7 +582,7 @@
                 {% if result.has_next %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('attributes', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter, analyze_exceptions=current_filters.analyze_exceptions) }}">
+                       href="{{ url_for('attributes', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter, analyze_exceptions=current_filters.analyze_exceptions, source_target_filter=current_filters.source_target_filter) }}">
                         <i class="bi bi-chevron-right"></i>
                     </a>
                 </li>
@@ -607,6 +633,12 @@ function analyzeExceptions() {
     // Добавляем параметр анализа исключений
     urlParams.set('analyze_exceptions', 'true');
     urlParams.set('page', '1'); // Сбрасываем на первую страницу
+    
+    // Сохраняем source_target_filter если он есть
+    const sourceTargetFilter = document.getElementById('source_target_filter');
+    if (sourceTargetFilter && sourceTargetFilter.value) {
+        urlParams.set('source_target_filter', sourceTargetFilter.value);
+    }
     
     // Показываем лоадер
     const btn = event.target;

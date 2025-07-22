@@ -136,6 +136,7 @@ def attributes():
     source_base_url = request.args.get('source_base_url', '')
     exception_action_filter = request.args.get('exception_action_filter', type=int)
     analyze_exceptions = request.args.get('analyze_exceptions', 'false').lower() == 'true'
+    source_target_filter = request.args.get('source_target_filter', '')
     
     # Проверяем корректность значений
     if page < 1:
@@ -154,7 +155,8 @@ def attributes():
         base_url=base_url if base_url else None,
         source_base_url=source_base_url if source_base_url else None,
         exception_action_filter=exception_action_filter,
-        analyze_exceptions=analyze_exceptions
+        analyze_exceptions=analyze_exceptions,
+        source_target_filter=source_target_filter if source_target_filter else None
     )
     
     # Получаем статистику
@@ -171,7 +173,8 @@ def attributes():
                              'base_url': base_url,
                              'source_base_url': source_base_url,
                              'exception_action_filter': exception_action_filter,
-                             'analyze_exceptions': analyze_exceptions
+                             'analyze_exceptions': analyze_exceptions,
+                             'source_target_filter': source_target_filter
                          })
 
 @app.route('/class/<int:class_ouid>')

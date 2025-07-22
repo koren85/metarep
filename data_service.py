@@ -242,7 +242,7 @@ class DataService:
                       search: str = None, status_variance: int = None, 
                       event: int = None, a_priznak: int = None, base_url: str = None,
                       source_base_url: str = None, exception_action_filter: int = None,
-                      analyze_exceptions: bool = False) -> Dict[str, Any]:
+                      analyze_exceptions: bool = False, source_target_filter: str = None) -> Dict[str, Any]:
         """Получение списка атрибутов с фильтрацией, пагинацией и анализом исключений (ОПТИМИЗИРОВАННАЯ ВЕРСИЯ)"""
         
         try:
@@ -256,7 +256,7 @@ class DataService:
                 return self._get_attributes_fast_mode(page, per_page, search, status_variance, event, a_priznak, base_url, source_base_url)
             
             # ЭТАП 2: Полный режим с анализом исключений - ОДИН запрос для всех данных
-            return self._get_attributes_with_exceptions_optimized(page, per_page, search, status_variance, event, a_priznak, base_url, source_base_url, exception_action_filter)
+            return self._get_attributes_with_exceptions_optimized(page, per_page, search, status_variance, event, a_priznak, base_url, source_base_url, exception_action_filter, source_target_filter)
             
         except Exception as e:
             print(f"[ERROR] Ошибка в оптимизированном get_attributes: {e}")
@@ -356,7 +356,8 @@ class DataService:
     
     def _get_attributes_with_exceptions_optimized(self, page: int, per_page: int, search: str, 
                                                  status_variance: int, event: int, a_priznak: int,
-                                                 base_url: str, source_base_url: str, exception_action_filter: int) -> Dict[str, Any]:
+                                                 base_url: str, source_base_url: str, exception_action_filter: int, 
+                                                 source_target_filter: str) -> Dict[str, Any]:
         """ОПТИМИЗИРОВАННАЯ версия с анализом исключений - ОДИН SQL запрос"""
         
         # Базовые условия фильтрации
@@ -496,6 +497,10 @@ class DataService:
             else:
                 exception_actions = differences_json or []
             
+            # Применяем фильтр по направлению изменений Source/Target
+            if source_target_filter:
+                exception_actions = self._apply_source_target_filter(exception_actions, source_target_filter)
+            
             # Вычисляем общее действие
             overall_action = self._get_overall_exception_action_from_json(exception_actions)
             
@@ -627,6 +632,50 @@ class DataService:
                 
         # Если нет действий, то БЕЗ ДЕЙСТВИЯ
         return -1
+    
+    def _apply_source_target_filter(self, exception_actions: List[Dict[str, Any]], source_target_filter: str) -> List[Dict[str, Any]]:
+        """Фильтрация исключений по направлению изменений Source/Target"""
+        
+        if not exception_actions or not source_target_filter:
+            return exception_actions
+        
+        filtered_actions = []
+        
+        for action in exception_actions:
+            source_value = str(action.get('source_value', '')).strip()
+            target_value = str(action.get('target_value', '')).strip()
+            
+            # Нормализуем пустые значения
+            source_empty = not source_value or source_value.lower() in ('null', 'none', '')
+            target_empty = not target_value or target_value.lower() in ('null', 'none', '')
+            
+            include_action = False
+            
+            if source_target_filter == 'source_to_null':
+                # Source → Null (удаление): есть source, нет target
+                include_action = not source_empty and target_empty
+                
+            elif source_target_filter == 'null_to_target':
+                # Null → Target (добавление): нет source, есть target
+                include_action = source_empty and not target_empty
+                
+            elif source_target_filter == 'source_to_target':
+                # Source → Target (изменение): есть и source и target
+                include_action = not source_empty and not target_empty
+                
+            elif source_target_filter == 'has_source':
+                # Есть Source (любые с исходным значением)
+                include_action = not source_empty
+                
+            elif source_target_filter == 'has_target':
+                # Есть Target (любые с целевым значением)
+                include_action = not target_empty
+            
+            if include_action:
+                filtered_actions.append(action)
+        
+        print(f"[DEBUG] Фильтр '{source_target_filter}': было {len(exception_actions)} исключений, стало {len(filtered_actions)}")
+        return filtered_actions
     
     def get_class_details(self, class_ouid: int, base_url: str = None, 
                          source_base_url: str = None,
