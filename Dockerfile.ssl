@@ -3,52 +3,13 @@ FROM alpine:latest
 # Устанавливаем openssl и cron
 RUN apk add --no-cache openssl dcron curl
 
-# Копируем скрипт генерации сертификатов
+# Копируем скрипты
 COPY scripts/generate-ssl.sh /usr/local/bin/generate-ssl.sh
-RUN chmod +x /usr/local/bin/generate-ssl.sh
+COPY scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /usr/local/bin/generate-ssl.sh && chmod +x /entrypoint.sh
 
 # Создаем cron задачу для обновления сертификатов каждый день в 3:00
 RUN echo "0 3 * * * /usr/local/bin/generate-ssl.sh >> /var/log/ssl-renew.log 2>&1" | crontab -
-
-# Создаем скрипт запуска
-RUN cat > /entrypoint.sh << 'EOF'
-#!/bin/sh
-set -e
-
-echo "Запуск SSL контейнера..."
-
-# Генерируем сертификаты при первом запуске
-/usr/local/bin/generate-ssl.sh
-
-# Запускаем cron в фоне
-crond -f &
-CRON_PID=$!
-
-echo "SSL контейнер запущен. Cron PID: $CRON_PID"
-
-# Функция для graceful shutdown
-cleanup() {
-    echo "Остановка SSL контейнера..."
-    kill $CRON_PID 2>/dev/null || true
-    wait $CRON_PID 2>/dev/null || true
-    exit 0
-}
-
-# Обработчики сигналов
-trap cleanup SIGTERM SIGINT
-
-# Бесконечный цикл с проверкой каждые 24 часа
-while true; do
-    sleep 86400  # 24 часа
-    if ! kill -0 $CRON_PID 2>/dev/null; then
-        echo "Cron процесс упал, перезапускаем..."
-        crond -f &
-        CRON_PID=$!
-    fi
-done
-EOF
-
-RUN chmod +x /entrypoint.sh
 
 # Создаем директорию для логов
 RUN mkdir -p /var/log && touch /var/log/ssl-renew.log
