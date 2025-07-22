@@ -242,7 +242,8 @@ class DataService:
                       search: str = None, status_variance: int = None, 
                       event: int = None, a_priznak: int = None, base_url: str = None,
                       source_base_url: str = None, exception_action_filter: int = None,
-                      analyze_exceptions: bool = False, source_target_filter: str = None) -> Dict[str, Any]:
+                      analyze_exceptions: bool = False, source_target_filter: str = None,
+                      property_filter: List[str] = None, show_update_actions: bool = True) -> Dict[str, Any]:
         """Получение списка атрибутов с фильтрацией, пагинацией и анализом исключений (ОПТИМИЗИРОВАННАЯ ВЕРСИЯ)"""
         
         try:
@@ -253,10 +254,11 @@ class DataService:
             
             # ЭТАП 1: Быстрый запрос только атрибутов БЕЗ анализа исключений
             if not analyze_exceptions:
+                # В быстром режиме игнорируем все фильтры исключений
                 return self._get_attributes_fast_mode(page, per_page, search, status_variance, event, a_priznak, base_url, source_base_url)
             
-            # ЭТАП 2: Полный режим с анализом исключений - ОДИН запрос для всех данных
-            return self._get_attributes_with_exceptions_optimized(page, per_page, search, status_variance, event, a_priznak, base_url, source_base_url, exception_action_filter, source_target_filter)
+            # ЭТАП 2: Полный режим с анализом исключений - фильтры исключений применяются только здесь
+            return self._get_attributes_with_exceptions_optimized(page, per_page, search, status_variance, event, a_priznak, base_url, source_base_url, exception_action_filter, source_target_filter, property_filter, show_update_actions)
             
         except Exception as e:
             print(f"[ERROR] Ошибка в оптимизированном get_attributes: {e}")
@@ -357,7 +359,8 @@ class DataService:
     def _get_attributes_with_exceptions_optimized(self, page: int, per_page: int, search: str, 
                                                  status_variance: int, event: int, a_priznak: int,
                                                  base_url: str, source_base_url: str, exception_action_filter: int, 
-                                                 source_target_filter: str) -> Dict[str, Any]:
+                                                 source_target_filter: str, property_filter: List[str], 
+                                                 show_update_actions: bool) -> Dict[str, Any]:
         """ОПТИМИЗИРОВАННАЯ версия с анализом исключений - ОДИН SQL запрос"""
         
         # Базовые условия фильтрации
@@ -493,15 +496,29 @@ class DataService:
             import json
             differences_json = row[12]
             if isinstance(differences_json, str):
-                exception_actions = json.loads(differences_json)
+                original_exception_actions = json.loads(differences_json)
             else:
-                exception_actions = differences_json or []
+                original_exception_actions = differences_json or []
+            
+            # СНАЧАЛА вычисляем статистику на ИСХОДНЫХ данных (без фильтрации)
+            original_overall_action = self._get_overall_exception_action_from_json(original_exception_actions)
+            
+            # ПОТОМ применяем фильтры только для отображения
+            exception_actions = original_exception_actions.copy()
             
             # Применяем фильтр по направлению изменений Source/Target
             if source_target_filter:
                 exception_actions = self._apply_source_target_filter(exception_actions, source_target_filter)
             
-            # Вычисляем общее действие
+            # Применяем фильтр по выбранным свойствам
+            if property_filter:
+                exception_actions = self._apply_property_filter(exception_actions, property_filter)
+            
+            # Применяем фильтр по действиям (показывать ли "Обновить")
+            if not show_update_actions:
+                exception_actions = self._apply_action_filter(exception_actions, show_update_actions)
+            
+            # Для отображения используем отфильтрованное действие
             overall_action = self._get_overall_exception_action_from_json(exception_actions)
             
             # Инициализируем данные класса
@@ -517,16 +534,20 @@ class DataService:
             # Получаем OUID атрибута назначения для admin_url
             target_ouid = self._get_target_attribute_ouid(class_name, attr_name) if base_url and class_name else None
             
-            # Извлекаем данные для отображения
+            # Извлекаем данные для отображения из ИСХОДНЫХ данных (до фильтрации)
             source_value = ''
             target_value = ''
-            property_name = ''
-            if exception_actions:
-                first_action = exception_actions[0]
+            original_property_name = ''
+            if original_exception_actions:
+                first_action = original_exception_actions[0]
                 source_value = first_action.get('source_value', '')
                 target_value = first_action.get('target_value', '')
-                property_names = [exc.get('property_name', '') for exc in exception_actions if exc.get('property_name')]
-                property_name = ', '.join(property_names) if property_names else ''
+                property_names = [exc.get('property_name', '') for exc in original_exception_actions if exc.get('property_name')]
+                original_property_name = ', '.join(property_names) if property_names else ''
+            
+            # Для отображения используем отфильтрованные данные
+            filtered_property_names = [exc.get('property_name', '') for exc in exception_actions if exc.get('property_name')]
+            display_property_name = ', '.join(filtered_property_names) if filtered_property_names else original_property_name
             
             attr_data = {
                 'ouid': attr_ouid,
@@ -541,7 +562,7 @@ class DataService:
                 'datatype_name': row[9],
                 'class_name': class_name,
                 'class_description': class_description,
-                'property_name': property_name,
+                'property_name': display_property_name,
                 'source': source_value,
                 'target': target_value,
                 'admin_url': self._build_admin_url(target_ouid or attr_ouid, 'SXAttr', base_url),
@@ -551,19 +572,24 @@ class DataService:
                 'overall_action_name': self._get_action_name(overall_action)
             }
             
-            # Группируем по действиям
-            if overall_action == 0:  # ИГНОРИРОВАТЬ
-                classes_data[class_name]['attributes']['ignore_list'].append(attr_data)
+            # Группируем по действиям используя ИСХОДНОЕ действие для статистики
+            if original_overall_action == 0:  # ИГНОРИРОВАТЬ
                 classes_data[class_name]['statistics']['ignore_count'] += 1
                 total_statistics['ignore_count'] += 1
-            elif overall_action == 2:  # ОБНОВИТЬ 
-                classes_data[class_name]['attributes']['update_list'].append(attr_data)
+                # Добавляем в список если прошел фильтрацию ИЛИ изначально не было исключений
+                if exception_actions or not original_exception_actions:
+                    classes_data[class_name]['attributes']['ignore_list'].append(attr_data)
+            elif original_overall_action == 2:  # ОБНОВИТЬ 
                 classes_data[class_name]['statistics']['update_count'] += 1
                 total_statistics['update_count'] += 1
-            else:  # БЕЗ ДЕЙСТВИЯ (overall_action == -1)
-                classes_data[class_name]['attributes']['no_action_list'].append(attr_data)
+                # Добавляем в список если прошел фильтрацию ИЛИ изначально не было исключений
+                if exception_actions or not original_exception_actions:
+                    classes_data[class_name]['attributes']['update_list'].append(attr_data)
+            else:  # БЕЗ ДЕЙСТВИЯ (original_overall_action == -1)
                 classes_data[class_name]['statistics']['no_action_count'] += 1
                 total_statistics['no_action_count'] += 1
+                # Атрибуты без действия показываем всегда (не зависит от фильтрации исключений)
+                classes_data[class_name]['attributes']['no_action_list'].append(attr_data)
         
         # Применяем фильтр по действиям исключений если задан
         if exception_action_filter is not None:
@@ -576,6 +602,20 @@ class DataService:
                 elif exception_action_filter == -1 and class_data['statistics']['no_action_count'] > 0:
                     filtered_classes_data[class_name] = class_data
             classes_data = filtered_classes_data
+        
+        # Убираем пустые классы (у которых нет атрибутов после фильтрации)
+        non_empty_classes_data = {}
+        for class_name, class_data in classes_data.items():
+            # Проверяем есть ли хотя бы один атрибут в любом из списков
+            ignore_count = len(class_data['attributes']['ignore_list'])
+            update_count = len(class_data['attributes']['update_list'])
+            no_action_count = len(class_data['attributes']['no_action_list'])
+            
+            if ignore_count > 0 or update_count > 0 or no_action_count > 0:
+                non_empty_classes_data[class_name] = class_data
+                
+        classes_data = non_empty_classes_data
+        print(f"[DEBUG] После удаления пустых классов: {len(classes_data)} классов")
         
         # Применяем пагинацию к классам
         class_names = list(classes_data.keys())
@@ -595,6 +635,9 @@ class DataService:
         print(f"[DEBUG] ОПТИМИЗАЦИЯ: обработано {len(all_attributes_optimized)} атрибутов за {processing_time:.2f} сек")
         print(f"[DEBUG] Статистика: игнорировать={total_statistics['ignore_count']}, обновить={total_statistics['update_count']}, без действия={total_statistics['no_action_count']}")
         
+        # Получаем список всех доступных свойств для фильтра
+        available_properties = self._get_available_properties(all_attributes_optimized)
+        
         return {
             'classes': paginated_classes_data,
             'total_count': total_attributes_count,
@@ -611,7 +654,8 @@ class DataService:
                 'query_time': query_time,
                 'processing_time': processing_time,
                 'total_time': processing_time
-            }
+            },
+            'available_properties': available_properties
         }
     
     def _get_overall_exception_action_from_json(self, exception_actions: List[Dict[str, Any]]) -> int:
@@ -676,6 +720,73 @@ class DataService:
         
         print(f"[DEBUG] Фильтр '{source_target_filter}': было {len(exception_actions)} исключений, стало {len(filtered_actions)}")
         return filtered_actions
+    
+    def _apply_property_filter(self, exception_actions: List[Dict[str, Any]], property_filter: List[str]) -> List[Dict[str, Any]]:
+        """Фильтрация исключений по выбранным свойствам атрибутов"""
+        
+        if not exception_actions or not property_filter:
+            return exception_actions
+        
+        filtered_actions = []
+        
+        for action in exception_actions:
+            property_name = action.get('property_name', '')
+            
+            # Включаем действие если его свойство в списке выбранных
+            if property_name in property_filter:
+                filtered_actions.append(action)
+        
+        print(f"[DEBUG] Фильтр свойств {property_filter}: было {len(exception_actions)} исключений, стало {len(filtered_actions)}")
+        return filtered_actions
+    
+    def _apply_action_filter(self, exception_actions: List[Dict[str, Any]], show_update_actions: bool) -> List[Dict[str, Any]]:
+        """Фильтрация исключений по действиям (показывать ли записи с действием 'Обновить')"""
+        
+        if not exception_actions:
+            return exception_actions
+        
+        filtered_actions = []
+        
+        for action in exception_actions:
+            exception_action = action.get('exception_action', 0)
+            
+            if show_update_actions:
+                # Показываем все действия (и "Игнорировать" и "Обновить")
+                filtered_actions.append(action)
+            else:
+                # Показываем только "Игнорировать" (action = 0), скрываем "Обновить" (action = 2)
+                if exception_action == 0:
+                    filtered_actions.append(action)
+        
+        action_name = "все действия" if show_update_actions else "только 'Игнорировать'"
+        print(f"[DEBUG] Фильтр действий ({action_name}): было {len(exception_actions)} исключений, стало {len(filtered_actions)}")
+        return filtered_actions
+    
+    def _get_available_properties(self, attributes_data: List) -> List[str]:
+        """Получение списка всех уникальных свойств атрибутов для фильтра"""
+        
+        properties_set = set()
+        
+        for row in attributes_data:
+            # row[12] - это differences_json
+            differences_json = row[12] if len(row) > 12 else None
+            
+            if differences_json:
+                import json
+                if isinstance(differences_json, str):
+                    exception_actions = json.loads(differences_json)
+                else:
+                    exception_actions = differences_json or []
+                
+                for action in exception_actions:
+                    property_name = action.get('property_name', '')
+                    if property_name and property_name.strip():
+                        properties_set.add(property_name.strip())
+        
+        # Возвращаем отсортированный список
+        available_properties = sorted(list(properties_set))
+        print(f"[DEBUG] Найдено {len(available_properties)} уникальных свойств: {available_properties[:10]}...")
+        return available_properties
     
     def get_class_details(self, class_ouid: int, base_url: str = None, 
                          source_base_url: str = None,

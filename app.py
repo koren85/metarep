@@ -135,8 +135,22 @@ def attributes():
     base_url = request.args.get('base_url', '')
     source_base_url = request.args.get('source_base_url', '')
     exception_action_filter = request.args.get('exception_action_filter', type=int)
-    analyze_exceptions = request.args.get('analyze_exceptions', 'false').lower() == 'true'
-    source_target_filter = request.args.get('source_target_filter', '')
+    analyze_exceptions_param = request.args.get('analyze_exceptions', 'false').lower()
+    analyze_exceptions = analyze_exceptions_param == 'true'
+    
+    # Фильтры исключений применяются только в режиме анализа исключений
+    if analyze_exceptions:
+        source_target_filter = request.args.get('source_target_filter', '')
+        property_filter = request.args.getlist('property_filter')  # Множественный выбор свойств
+        
+        # Обработка чекбокса: если есть "true" в списке значений, то True, иначе False
+        show_update_actions_values = request.args.getlist('show_update_actions')
+        show_update_actions = 'true' in show_update_actions_values
+    else:
+        # В быстром режиме игнорируем фильтры исключений
+        source_target_filter = None
+        property_filter = None  
+        show_update_actions = True
     
     # Проверяем корректность значений
     if page < 1:
@@ -156,7 +170,9 @@ def attributes():
         source_base_url=source_base_url if source_base_url else None,
         exception_action_filter=exception_action_filter,
         analyze_exceptions=analyze_exceptions,
-        source_target_filter=source_target_filter if source_target_filter else None
+        source_target_filter=source_target_filter,
+        property_filter=property_filter,
+        show_update_actions=show_update_actions
     )
     
     # Получаем статистику
@@ -174,7 +190,9 @@ def attributes():
                              'source_base_url': source_base_url,
                              'exception_action_filter': exception_action_filter,
                              'analyze_exceptions': analyze_exceptions,
-                             'source_target_filter': source_target_filter
+                             'source_target_filter': source_target_filter,
+                             'property_filter': property_filter,
+                             'show_update_actions': show_update_actions
                          })
 
 @app.route('/class/<int:class_ouid>')

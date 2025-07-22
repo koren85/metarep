@@ -27,6 +27,14 @@
             </div>
             <div class="card-body">
                 <form method="GET" action="{{ url_for('attributes') }}">
+                    <!-- Скрытые поля для сохранения состояния анализа -->
+                    {% if current_filters.analyze_exceptions %}
+                        <input type="hidden" name="analyze_exceptions" value="true">
+                    {% endif %}
+                    {% if current_filters.exception_action_filter is not none %}
+                        <input type="hidden" name="exception_action_filter" value="{{ current_filters.exception_action_filter }}">
+                    {% endif %}
+                    
                     <div class="mb-3">
                         <label for="search" class="form-label">Поиск</label>
                         <input type="text" 
@@ -99,6 +107,9 @@
                         <div class="form-text">URL для ссылок на админку источника</div>
                     </div>
                     
+                    <!-- Фильтры анализа исключений (показываются только в полном режиме) -->
+                    {% if current_filters.analyze_exceptions %}
+                    
                     <!-- Фильтр по направлению изменений Source/Target -->
                     <div class="mb-3">
                         <label for="source_target_filter" class="form-label">Направление изменений</label>
@@ -124,6 +135,46 @@
                             Фильтрация по типу изменений в анализе исключений
                         </div>
                     </div>
+                    
+                    <!-- Фильтр по свойствам атрибутов -->
+                    {% if result.available_properties %}
+                    <div class="mb-3">
+                        <label for="property_filter" class="form-label">Свойства атрибутов</label>
+                        <select multiple class="form-select" id="property_filter" name="property_filter" size="5">
+                            {% for property in result.available_properties %}
+                                <option value="{{ property }}" 
+                                        {% if property in (current_filters.property_filter or []) %}selected{% endif %}>
+                                    {{ property }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            Выберите свойства для отображения (Ctrl+Click для множественного выбора)
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Чекбокс для показа записей "Обновить" -->
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <!-- Скрытое поле для передачи false при unchecked -->
+                            <input type="hidden" name="show_update_actions" value="false">
+                            <input class="form-check-input" 
+                                   type="checkbox" 
+                                   id="show_update_actions" 
+                                   name="show_update_actions" 
+                                   value="true"
+                                   {% if current_filters.show_update_actions != false %}checked{% endif %}>
+                            <label class="form-check-label" for="show_update_actions">
+                                Показывать записи "Обновить"
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            Если выключено - показываются только записи "Игнорировать"
+                        </div>
+                    </div>
+                    
+                    {% endif %}
                     
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary">
@@ -175,7 +226,7 @@
                 <small><i class="bi bi-info-circle"></i> Быстрый режим - без анализа исключений для максимальной скорости</small>
             </div>
             {% else %}
-            <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, source_target_filter=current_filters.source_target_filter) }}" 
+            <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, analyze_exceptions='false') }}" 
                class="btn btn-secondary">
                 <i class="bi bi-arrow-left"></i> Быстрый режим
             </a>
@@ -189,8 +240,7 @@
         {% if result.analyze_exceptions and result.statistics %}
         <div class="row mb-4">
             <div class="col-md-4">
-                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=2, analyze_exceptions='true', source_target_filter=current_filters.source_target_filter) }}" 
-                   class="text-decoration-none">
+                <a href="javascript:void(0)" onclick="navigateWithFilters(2)" class="text-decoration-none">
                     <div class="card text-center stats-card {% if current_filters.exception_action_filter == 2 %}border-info{% endif %}">
                         <div class="card-body">
                             <h5 class="card-title text-info">{{ result.statistics.update_count }}</h5>
@@ -203,8 +253,7 @@
                 </a>
             </div>
             <div class="col-md-4">
-                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=0, analyze_exceptions='true', source_target_filter=current_filters.source_target_filter) }}" 
-                   class="text-decoration-none">
+                <a href="javascript:void(0)" onclick="navigateWithFilters(0)" class="text-decoration-none">
                     <div class="card text-center stats-card {% if current_filters.exception_action_filter == 0 %}border-secondary{% endif %}">
                         <div class="card-body">
                             <h5 class="card-title text-secondary">{{ result.statistics.ignore_count }}</h5>
@@ -217,11 +266,10 @@
                 </a>
             </div>
             <div class="col-md-4">
-                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=-1, analyze_exceptions='true', source_target_filter=current_filters.source_target_filter) }}" 
-                   class="text-decoration-none">
+                <a href="javascript:void(0)" onclick="navigateWithFilters(-1)" class="text-decoration-none">
                     <div class="card text-center stats-card {% if current_filters.exception_action_filter == -1 %}border-warning{% endif %}">
                         <div class="card-body">
-                            <h5 class="card-title text-muted">{{ result.statistics.no_action_count }}</h5>
+                            <h5 class="card-title text-warning">{{ result.statistics.no_action_count }}</h5>
                             <p class="card-text">Без действия</p>
                             {% if current_filters.exception_action_filter == -1 %}
                                 <small class="text-warning"><i class="bi bi-funnel-fill"></i> Активный фильтр</small>
@@ -303,6 +351,21 @@
         
         <!-- ПОЛНЫЙ РЕЖИМ: Группировка атрибутов по классам -->
         {% elif result.classes %}
+        
+        <!-- Кнопки управления аккордеонами -->
+        <div class="row mb-3">
+            <div class="col-12">
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="collapseAllAccordions()">
+                        <i class="bi bi-chevron-up"></i> Скрыть все
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="expandAllAccordions()">
+                        <i class="bi bi-chevron-down"></i> Раскрыть все
+                    </button>
+                </div>
+            </div>
+        </div>
+        
         <div class="accordion" id="classesAccordion" data-has-action-filter="{% if current_filters.exception_action_filter is not none %}true{% else %}false{% endif %}">
             {% for class_name, class_data in result.classes.items() %}
             <div class="accordion-item mb-3">
@@ -630,15 +693,15 @@ function analyzeExceptions() {
     // Получаем текущие параметры URL
     const urlParams = new URLSearchParams(window.location.search);
     
+    // Очищаем фильтры исключений (они не должны передаваться из быстрого режима)
+    urlParams.delete('source_target_filter');
+    urlParams.delete('property_filter');
+    urlParams.delete('show_update_actions');
+    urlParams.delete('exception_action_filter');
+    
     // Добавляем параметр анализа исключений
     urlParams.set('analyze_exceptions', 'true');
     urlParams.set('page', '1'); // Сбрасываем на первую страницу
-    
-    // Сохраняем source_target_filter если он есть
-    const sourceTargetFilter = document.getElementById('source_target_filter');
-    if (sourceTargetFilter && sourceTargetFilter.value) {
-        urlParams.set('source_target_filter', sourceTargetFilter.value);
-    }
     
     // Показываем лоадер
     const btn = event.target;
@@ -648,6 +711,94 @@ function analyzeExceptions() {
     
     // Перезагружаем страницу с новыми параметрами
     window.location.href = window.location.pathname + '?' + urlParams.toString();
+}
+
+function navigateWithFilters(action) {
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Удаляем существующие параметры, если они есть
+    urlParams.delete('page');
+    urlParams.delete('per_page');
+    urlParams.delete('search');
+    urlParams.delete('status_variance');
+    urlParams.delete('event');
+    urlParams.delete('a_priznak');
+    urlParams.delete('base_url');
+    urlParams.delete('source_base_url');
+    urlParams.delete('source_target_filter');
+    urlParams.delete('property_filter');
+    urlParams.delete('show_update_actions');
+    urlParams.delete('exception_action_filter');
+    urlParams.delete('analyze_exceptions');
+
+    // Добавляем новые параметры
+    urlParams.set('page', '1'); // Сбрасываем на первую страницу
+    urlParams.set('per_page', '20'); // Устанавливаем по умолчанию
+    
+    // Получаем значения из формы, если элементы существуют
+    const searchEl = document.getElementById('search');
+    if (searchEl && searchEl.value) urlParams.set('search', searchEl.value);
+    
+    const statusVarianceEl = document.getElementById('status_variance');
+    if (statusVarianceEl && statusVarianceEl.value) urlParams.set('status_variance', statusVarianceEl.value);
+    
+    const eventEl = document.getElementById('event');
+    if (eventEl && eventEl.value) urlParams.set('event', eventEl.value);
+    
+    const prznakEl = document.getElementById('a_priznak');
+    if (prznakEl && prznakEl.value) urlParams.set('a_priznak', prznakEl.value);
+    
+    const baseUrlEl = document.getElementById('base_url');
+    if (baseUrlEl && baseUrlEl.value) urlParams.set('base_url', baseUrlEl.value);
+    
+    const sourceBaseUrlEl = document.getElementById('source_base_url');
+    if (sourceBaseUrlEl && sourceBaseUrlEl.value) urlParams.set('source_base_url', sourceBaseUrlEl.value);
+    
+    const sourceTargetFilterEl = document.getElementById('source_target_filter');
+    if (sourceTargetFilterEl && sourceTargetFilterEl.value) urlParams.set('source_target_filter', sourceTargetFilterEl.value);
+    
+    const propertyFilterEl = document.getElementById('property_filter');
+    if (propertyFilterEl) {
+        const selectedProperties = Array.from(propertyFilterEl.selectedOptions).map(option => option.value);
+        selectedProperties.forEach(property => {
+            urlParams.append('property_filter', property);
+        });
+    }
+    
+    const showUpdateActionsEl = document.getElementById('show_update_actions');
+    if (showUpdateActionsEl) {
+        urlParams.set('show_update_actions', showUpdateActionsEl.checked ? 'true' : 'false');
+    }
+    
+    urlParams.set('exception_action_filter', action);
+    urlParams.set('analyze_exceptions', 'true'); // Убедимся, что анализируем
+
+    window.location.href = window.location.pathname + '?' + urlParams.toString();
+}
+
+// Функции управления аккордеонами
+function collapseAllAccordions() {
+    const allCollapses = document.querySelectorAll('#classesAccordion .accordion-collapse');
+    allCollapses.forEach(function(collapse) {
+        const bsCollapse = bootstrap.Collapse.getInstance(collapse);
+        if (bsCollapse) {
+            bsCollapse.hide();
+        } else {
+            new bootstrap.Collapse(collapse, {show: false});
+        }
+    });
+}
+
+function expandAllAccordions() {
+    const allCollapses = document.querySelectorAll('#classesAccordion .accordion-collapse');
+    allCollapses.forEach(function(collapse) {
+        const bsCollapse = bootstrap.Collapse.getInstance(collapse);
+        if (bsCollapse) {
+            bsCollapse.show();
+        } else {
+            new bootstrap.Collapse(collapse, {show: true});
+        }
+    });
 }
 
 // Управление аккордеоном классов
