@@ -240,7 +240,8 @@ class DataService:
     def get_attributes(self, page: int = 1, per_page: int = 20, 
                       search: str = None, status_variance: int = None, 
                       event: int = None, a_priznak: int = None, base_url: str = None,
-                      source_base_url: str = None, exception_action_filter: int = None) -> Dict[str, Any]:
+                      source_base_url: str = None, exception_action_filter: int = None,
+                      analyze_exceptions: bool = False) -> Dict[str, Any]:
         """Получение списка атрибутов с фильтрацией, пагинацией и анализом исключений"""
         
         # Базовый запрос
@@ -283,31 +284,74 @@ class DataService:
             all_attributes = self.db_manager.execute_query(all_attributes_query)
             print(f"[DEBUG] Total attributes found: {len(all_attributes)}")
             
-            # Анализируем исключения для всех атрибутов и группируем по классам
+            # Кэшируем таблицу исключений только если нужен анализ
+            exceptions_cache = {}
+            if analyze_exceptions:
+                exceptions_cache = self._load_exceptions_cache()
+                print(f"[DEBUG] Загружено {len(exceptions_cache)} исключений в кэш для анализа")
+                # Покажем первые 5 записей кэша
+                cache_preview = list(exceptions_cache.items())[:5]
+                print(f"[DEBUG] Превью кэша: {cache_preview}")
+                # Покажем конкретные ключи которые могут быть в тестах
+                test_keys = ['attribute:informs', 'attribute:readOnly', 'attribute:grp', 'attribute:guid']
+                for test_key in test_keys:
+                    if test_key in exceptions_cache:
+                        print(f"[DEBUG] Найден ключ {test_key} = {exceptions_cache[test_key]}")
+                    else:
+                        print(f"[DEBUG] Ключ {test_key} НЕ найден в кэше")
+            
+            # Группируем атрибуты по классам
             classes_data = {}
             total_statistics = {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
+            attr_counter = 0
             
             for row in all_attributes:
+                attr_counter += 1
                 class_name = row[11] or 'Без класса'
                 class_description = row[12] or ''
                 class_ouid = row[5]
                 
                 # Инициализируем данные класса если еще нет
                 if class_name not in classes_data:
-                    classes_data[class_name] = {
-                        'class_name': class_name,
-                        'class_description': class_description,
-                        'class_ouid': class_ouid,
-                        'attributes': {'ignore_list': [], 'update_list': [], 'no_action_list': []},
-                        'statistics': {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
-                    }
+                    if analyze_exceptions:
+                        classes_data[class_name] = {
+                            'class_name': class_name,
+                            'class_description': class_description,
+                            'class_ouid': class_ouid,
+                            'attributes': {'ignore_list': [], 'update_list': [], 'no_action_list': []},
+                            'statistics': {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
+                        }
+                    else:
+                        classes_data[class_name] = {
+                            'class_name': class_name,
+                            'class_description': class_description,
+                            'class_ouid': class_ouid,
+                            'attributes': {'all_list': []},
+                            'statistics': {'total_count': 0}
+                        }
                 
-                # Временно отключаем сложный анализ исключений
+                # Анализируем исключения только если включен анализ
                 exception_actions = []
-                overall_action = 0  # По умолчанию игнорировать
+                overall_action = -1  # По умолчанию - БЕЗ ДЕЙСТВИЯ (-1, не 0!)
+                
+                if analyze_exceptions:
+                    exception_actions = self._analyze_attribute_exceptions_cached(row[0], row[1], row[9], exceptions_cache)
+                    
+                    overall_action = self._get_overall_exception_action(exception_actions)
                 
                 # Получаем OUID атрибута назначения для admin_url
                 target_ouid = self._get_target_attribute_ouid(row[11], row[1]) if base_url and row[11] else None
+                
+                # Извлекаем source, target и свойство из первого исключения для отображения
+                source_value = ''
+                target_value = ''
+                property_name = ''
+                if exception_actions and len(exception_actions) > 0:
+                    source_value = exception_actions[0].get('source_value', '')
+                    target_value = exception_actions[0].get('target_value', '')
+                    # Собираем все имена свойств через запятую
+                    property_names = [exc.get('property_name', '') for exc in exception_actions if exc.get('property_name')]
+                    property_name = ', '.join(property_names) if property_names else ''
                 
                 attr_data = {
                     'ouid': row[0],
@@ -322,6 +366,9 @@ class DataService:
                     'datatype_name': row[10],
                     'class_name': row[11],
                     'class_description': row[12],
+                    'property_name': property_name,  # Добавляем имя свойства
+                    'source': source_value,  # Добавляем source
+                    'target': target_value,  # Добавляем target
                     'admin_url': self._build_admin_url(target_ouid or row[0], 'SXAttr', base_url),
                     'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url),
                     'exception_actions': exception_actions,
@@ -329,19 +376,37 @@ class DataService:
                     'overall_action_name': self._get_action_name(overall_action)
                 }
                 
-                # Группируем по действиям внутри класса
-                if overall_action == 0:
-                    classes_data[class_name]['attributes']['ignore_list'].append(attr_data)
-                    classes_data[class_name]['statistics']['ignore_count'] += 1
-                    total_statistics['ignore_count'] += 1
-                elif overall_action == 2:
-                    classes_data[class_name]['attributes']['update_list'].append(attr_data)
-                    classes_data[class_name]['statistics']['update_count'] += 1
-                    total_statistics['update_count'] += 1
+                # Группируем по действиям внутри класса только если включен анализ
+                if analyze_exceptions:
+                    # Отладка группировки для первых атрибутов
+                    if attr_counter <= 5:
+                        print(f"[DEBUG] Группировка атрибута {row[1]}: overall_action={overall_action}, исключений={len(exception_actions)}")
+                    
+                    if overall_action == 0:  # ИГНОРИРОВАТЬ
+                        classes_data[class_name]['attributes']['ignore_list'].append(attr_data)
+                        classes_data[class_name]['statistics']['ignore_count'] += 1
+                        total_statistics['ignore_count'] += 1
+                    elif overall_action == 2:  # ОБНОВИТЬ 
+                        classes_data[class_name]['attributes']['update_list'].append(attr_data)
+                        classes_data[class_name]['statistics']['update_count'] += 1
+                        total_statistics['update_count'] += 1
+                        # Дополнительная отладка для действий=2
+                        if total_statistics['update_count'] <= 3:
+                            print(f"[DEBUG] ✅ Атрибут {row[1]} добавлен в update_list! total_update_count={total_statistics['update_count']}")
+                    else:  # БЕЗ ДЕЙСТВИЯ (overall_action == -1 или другие значения)
+                        classes_data[class_name]['attributes']['no_action_list'].append(attr_data)
+                        classes_data[class_name]['statistics']['no_action_count'] += 1
+                        total_statistics['no_action_count'] += 1
+                        # Отладка для атрибутов без действия
+                        if attr_counter <= 5 and overall_action == -1:
+                            print(f"[DEBUG] 📝 Атрибут {row[1]} добавлен в no_action_list (без исключений)")
+                        elif attr_counter <= 5:
+                            print(f"[DEBUG] ⚠️ Атрибут {row[1]} попал в no_action_list с неожиданным overall_action={overall_action}")
                 else:
-                    classes_data[class_name]['attributes']['no_action_list'].append(attr_data)
-                    classes_data[class_name]['statistics']['no_action_count'] += 1
-                    total_statistics['no_action_count'] += 1
+                    # Без анализа исключений - все атрибуты в одну группу
+                    classes_data[class_name]['attributes']['all_list'].append(attr_data)
+                    classes_data[class_name]['statistics']['total_count'] = classes_data[class_name]['statistics'].get('total_count', 0) + 1
+                    total_statistics['total_count'] = total_statistics.get('total_count', 0) + 1
             
             # Применяем фильтр по действиям исключений если задан
             if exception_action_filter is not None:
@@ -370,7 +435,12 @@ class DataService:
             total_pages = math.ceil(total_classes / per_page) if total_classes > 0 else 0
             
             print(f"[DEBUG] Total classes: {total_classes}, paginated: {len(paginated_classes_data)}")
-            print(f"[DEBUG] Statistics: {total_statistics}")
+            if analyze_exceptions:
+                print(f"[DEBUG] Statistics: {total_statistics}")
+                print(f"[DEBUG] Обработано атрибутов: {attr_counter}")
+                print(f"[DEBUG] Финальная статистика: игнорировать={total_statistics['ignore_count']}, обновить={total_statistics['update_count']}, без действия={total_statistics['no_action_count']}")
+            else:
+                print(f"[DEBUG] Быстрый режим: обработано {attr_counter} атрибутов без анализа исключений")
             
             return {
                 'classes': paginated_classes_data,
@@ -382,7 +452,8 @@ class DataService:
                 'has_prev': page > 1,
                 'has_next': page < total_pages,
                 'statistics': total_statistics,
-                'exception_action_filter': exception_action_filter
+                'exception_action_filter': exception_action_filter,
+                'analyze_exceptions': analyze_exceptions
             }
             
         except Exception as e:
@@ -1057,7 +1128,7 @@ class DataService:
         finally:
             if not skip_disconnect:
                 self.db_manager.disconnect()
-
+    
     def get_attribute_differences(self, class_ouid: int, search: str = None, status_variance: int = None, 
                              event: int = None, a_priznak: int = None, base_url: str = None, source_base_url: str = None, 
                              skip_disconnect: bool = False) -> List[Dict[str, Any]]:
@@ -1322,6 +1393,139 @@ class DataService:
             print(f"Ошибка получения OUID группы назначения: {e}")
             return None
     
+    def _load_exceptions_cache(self) -> Dict[str, int]:
+        """Загружает всю таблицу исключений в кэш для быстрого доступа"""
+        cache = {}
+        try:
+            # Изменяем запрос - теперь получаем и entity_name и property_name
+            query = "SELECT entity_type, entity_name, property_name, action FROM __meta_statistic"
+            result = self.db_manager.execute_query(query)
+            
+            for row in result:
+                entity_type, entity_name, property_name, action = row
+                
+                # ИСПРАВЛЕНИЕ: преобразуем action в int
+                action = int(action) if action is not None else 0
+                
+                # Создаем ключи для поиска по обеим вариантам:
+                # 1. По entity_name (имя свойства, например "readOnly")
+                key1 = f"{entity_type}:{entity_name}"
+                cache[key1] = action
+                
+                # 2. По property_name (описание свойства, например "Только для чтения")
+                if property_name and property_name != entity_name:
+                    key2 = f"{entity_type}:{property_name}"
+                    cache[key2] = action
+                
+            print(f"[DEBUG] Загружен кэш исключений: {len(cache)} записей")
+            return cache
+            
+        except Exception as e:
+            print(f"[DEBUG] Ошибка загрузки кэша исключений: {e}")
+            return {}
+
+    def _analyze_attribute_exceptions_cached(self, attr_ouid: int, attr_name: str, a_log: str, exceptions_cache: Dict[str, int]) -> List[Dict[str, Any]]:
+        """Анализ исключений для атрибута с использованием кэша"""
+        
+        if not a_log or a_log.strip() == '':
+            # print(f"[DEBUG] Атрибут {attr_name}: БЕЗ a_log")
+            return []
+        
+        try:
+            # Парсим a_log как делается в get_attribute_differences
+            attr_blocks_query = f"""
+                WITH source_data AS (
+                    SELECT
+                        {attr_ouid} as ouid,
+                        '{attr_name}' as name,
+                        $${a_log}$$ as a_log
+                ),
+                attr_blocks AS (
+                    SELECT
+                        s.ouid,
+                        s.name,
+                        trim(split_part(attr_block, E'\\n', 1)) as attribute_name,
+                        COALESCE(
+                            trim(
+                                split_part(
+                                    substring(attr_block from 'target[[:space:]]*=[[:space:]]*(.*)'),
+                                    'source =',
+                                    1
+                                )
+                            ),
+                            ''
+                        ) as source_value,
+                        COALESCE(
+                            trim(
+                                substring(attr_block from 'source[[:space:]]*=[[:space:]]*([^\\n]*)')
+                            ),
+                            ''
+                        ) as target_value
+                    FROM source_data s
+                    CROSS JOIN LATERAL (
+                        SELECT unnest(
+                            regexp_split_to_array(
+                                s.a_log,
+                                E'(?=\\n[^[:space:]\\n])'
+                            )
+                        ) AS attr_block
+                    ) attr_blocks
+                    WHERE attr_block ~ 'source[[:space:]]*='
+                        AND trim(split_part(attr_block, E'\\n', 1)) != ''
+                        AND length(trim(attr_block)) > 0
+                )
+                SELECT
+                    ouid,
+                    name,
+                    attribute_name,
+                    source_value,
+                    target_value
+                FROM attr_blocks
+                WHERE attribute_name IS NOT NULL
+                    AND attribute_name != ''
+                ORDER BY attribute_name
+            """
+            
+            result = self.db_manager.execute_query(attr_blocks_query)
+            
+            if not result:
+                # print(f"[DEBUG] Атрибут {attr_name}: парсинг a_log = ПУСТО")
+                return []
+            
+            # Собираем действия для всех свойств атрибута
+            exception_actions = []
+            max_action = 0  # Максимальное действие (0=игнорировать, 2=обновить)
+            
+            for row in result:
+                ouid, name, attribute_name, source_value, target_value = row
+                
+                # Ищем исключение для этого свойства
+                cache_key = f"attribute:{attribute_name}"
+                action = exceptions_cache.get(cache_key, 0)
+                
+                # action уже int из кэша
+                
+                # print(f"[DEBUG] Свойство '{attribute_name}': действие={action}")
+                
+                # Запоминаем максимальное действие
+                if action > max_action:
+                    max_action = action
+                
+                exception_actions.append({
+                    'property_name': attribute_name,
+                    'source_value': source_value,
+                    'target_value': target_value,
+                    'exception_action': action,
+                    'action_name': self._get_action_name(action)
+                })
+            
+            # print(f"[DEBUG] Атрибут {attr_name}: max_action={max_action}, свойств={len(exception_actions)}")
+            return exception_actions
+            
+        except Exception as e:
+            print(f"[DEBUG] Ошибка анализа исключений для {attr_name}: {e}")
+            return []
+
     def _get_difference_type(self, source_value: str, target_value: str) -> str:
         """Определение типа различия"""
         if source_value == '' and target_value != '':
@@ -1623,6 +1827,7 @@ class DataService:
                            property_name: str = None, skip_disconnect: bool = False) -> int:
         """Получение действия для конкретного исключения"""
         
+        # Для атрибутов ищем по entity_name (это имя свойства из файла исключений)
         query = """
             SELECT action FROM __meta_statistic 
             WHERE entity_type = ? AND entity_name = ?
@@ -1647,6 +1852,28 @@ class DataService:
                 prep_stmt.close()
                 return action
             else:
+                # Если не нашли по entity_name, пробуем искать по property_name
+                if property_name:
+                    query2 = """
+                        SELECT action FROM __meta_statistic 
+                        WHERE entity_type = ? AND property_name = ?
+                    """
+                    prep_stmt2 = self.db_manager.connection.prepareStatement(query2)
+                    prep_stmt2.setString(1, entity_type)
+                    prep_stmt2.setString(2, property_name)
+                    result_set2 = prep_stmt2.executeQuery()
+                    
+                    if result_set2.next():
+                        action = result_set2.getInt('action')
+                        result_set2.close()
+                        prep_stmt2.close()
+                        result_set.close()
+                        prep_stmt.close()
+                        return action
+                    
+                    result_set2.close()
+                    prep_stmt2.close()
+                
                 # print(f"[DEBUG] Исключение не найдено для: {entity_type}/{entity_name}")
                 result_set.close()
                 prep_stmt.close()
@@ -1813,19 +2040,16 @@ class DataService:
         """Определение общего действия для атрибута на основе всех его исключений"""
         
         if not exception_actions:
-            return 0  # По умолчанию игнорировать
+            return 0  # ИГНОРИРОВАТЬ если нет исключений
         
         # Если есть хотя бы одно действие "Обновить" (2), то общее действие - "Обновить"
         for action_data in exception_actions:
             if action_data.get('exception_action', 0) == 2:
+
                 return 2
         
-        # Если есть хотя бы одно действие "Игнорировать" (0), то общее действие - "Игнорировать"
-        for action_data in exception_actions:
-            if action_data.get('exception_action', 0) == 0:
-                return 0
-        
-        # По умолчанию
+        # Иначе - игнорировать
+
         return 0
     
     # ===== Методы для управления действиями =====
@@ -1918,7 +2142,7 @@ class DataService:
                         log_line,
                         ROW_NUMBER() OVER (PARTITION BY class_name ORDER BY line_number) as source_seq
                     FROM log_lines
-                    WHERE log_line ~ '^[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*.+'
+                    WHERE log_line ~ 'source[[:space:]]*='
                 ),
                 target_lines AS (
                     SELECT

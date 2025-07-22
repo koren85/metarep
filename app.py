@@ -135,6 +135,7 @@ def attributes():
     base_url = request.args.get('base_url', '')
     source_base_url = request.args.get('source_base_url', '')
     exception_action_filter = request.args.get('exception_action_filter', type=int)
+    analyze_exceptions = request.args.get('analyze_exceptions', 'false').lower() == 'true'
     
     # Проверяем корректность значений
     if page < 1:
@@ -152,7 +153,8 @@ def attributes():
         a_priznak=a_priznak,
         base_url=base_url if base_url else None,
         source_base_url=source_base_url if source_base_url else None,
-        exception_action_filter=exception_action_filter
+        exception_action_filter=exception_action_filter,
+        analyze_exceptions=analyze_exceptions
     )
     
     # Получаем статистику
@@ -168,7 +170,8 @@ def attributes():
                              'a_priznak': a_priznak,
                              'base_url': base_url,
                              'source_base_url': source_base_url,
-                             'exception_action_filter': exception_action_filter
+                             'exception_action_filter': exception_action_filter,
+                             'analyze_exceptions': analyze_exceptions
                          })
 
 @app.route('/class/<int:class_ouid>')
@@ -510,6 +513,27 @@ def api_migrate_actions():
         return jsonify(result), 400
     else:
         return jsonify(result), 200
+
+
+
+@app.route('/api/reload-exceptions', methods=['POST'])
+def api_reload_exceptions():
+    """API для принудительной перезагрузки данных исключений из файлов"""
+    
+    try:
+        # Принудительно перезагружаем данные исключений
+        result = data_service.db_manager.init_exceptions_data(force_reload=True)
+        
+        if result:
+            return jsonify({
+                "success": True,
+                "message": "Данные исключений успешно перезагружены из файлов"
+            })
+        else:
+            return jsonify({"error": "Ошибка перезагрузки данных исключений"}), 500
+            
+    except Exception as e:
+        return jsonify({"error": f"Ошибка перезагрузки исключений: {e}"}), 500
 
 @app.errorhandler(404)
 def not_found(error):

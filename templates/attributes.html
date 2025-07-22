@@ -127,25 +127,23 @@
         
         <!-- Кнопки управления -->
         <div class="mb-3">
-            <button id="expand-all" class="btn btn-outline-primary btn-sm">
-                <i class="bi bi-arrows-expand"></i> Развернуть все
+            {% if not current_filters.analyze_exceptions %}
+            <button onclick="analyzeExceptions()" class="btn btn-primary">
+                <i class="bi bi-gear"></i> Анализировать исключения
             </button>
-            <button id="collapse-all" class="btn btn-outline-secondary btn-sm">
-                <i class="bi bi-arrows-collapse"></i> Свернуть все
-            </button>
-            {% if current_filters.exception_action_filter is not none %}
-            <a href="{{ url_for('attributes', search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}" 
-               class="btn btn-outline-warning btn-sm">
-                <i class="bi bi-x-circle"></i> Сбросить фильтр действий
+            {% else %}
+            <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}" 
+               class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Показать без анализа
             </a>
             {% endif %}
         </div>
         
         <!-- Кликабельная статистика анализа -->
-        {% if result.statistics %}
+        {% if result.analyze_exceptions and result.statistics %}
         <div class="row mb-4">
             <div class="col-md-4">
-                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=2) }}" 
+                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=2, analyze_exceptions='true') }}" 
                    class="text-decoration-none">
                     <div class="card text-center stats-card {% if current_filters.exception_action_filter == 2 %}border-info{% endif %}">
                         <div class="card-body">
@@ -159,7 +157,7 @@
                 </a>
             </div>
             <div class="col-md-4">
-                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=0) }}" 
+                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=0, analyze_exceptions='true') }}" 
                    class="text-decoration-none">
                     <div class="card text-center stats-card {% if current_filters.exception_action_filter == 0 %}border-secondary{% endif %}">
                         <div class="card-body">
@@ -173,7 +171,7 @@
                 </a>
             </div>
             <div class="col-md-4">
-                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=-1) }}" 
+                <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=-1, analyze_exceptions='true') }}" 
                    class="text-decoration-none">
                     <div class="card text-center stats-card {% if current_filters.exception_action_filter == -1 %}border-warning{% endif %}">
                         <div class="card-body">
@@ -191,6 +189,97 @@
         
         <!-- Группировка атрибутов по классам -->
         {% if result.classes %}
+        
+        {% if not result.analyze_exceptions %}
+        <!-- Простое отображение атрибутов без анализа исключений -->
+        <div class="accordion" id="classesAccordion">
+            {% for class_name, class_data in result.classes.items() %}
+            <div class="accordion-item mb-3">
+                <h2 class="accordion-header" id="heading-simple-{{ loop.index }}">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                            data-bs-target="#collapse-simple-{{ loop.index }}" aria-expanded="false" 
+                            aria-controls="collapse-simple-{{ loop.index }}">
+                        <div class="w-100">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ class_data.class_name }}</strong>
+                                    {% if class_data.class_description %}
+                                        <br><small class="text-muted">{{ class_data.class_description }}</small>
+                                    {% endif %}
+                                </div>
+                                <div class="me-3">
+                                    <span class="badge bg-primary">{{ class_data.statistics.total_count }} атрибутов</span>
+                                </div>
+                            </div>
+                        </div>
+                    </button>
+                </h2>
+                <div id="collapse-simple-{{ loop.index }}" class="accordion-collapse collapse" 
+                     aria-labelledby="heading-simple-{{ loop.index }}" data-bs-parent="#classesAccordion">
+                    <div class="accordion-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-striped mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Имя</th>
+                                        <th>Заголовок</th>
+                                        <th>Тип</th>
+                                        <th>Свойство</th>
+                                        <th>Source</th>
+                                        <th>Target</th>
+                                        <th>Признак</th>
+                                        <th>Админка</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for attr in class_data.attributes.all_list %}
+                                    <tr>
+                                        <td><code>{{ attr.ouid }}</code></td>
+                                        <td><strong>{{ attr.name or 'Без имени' }}</strong></td>
+                                        <td>{{ attr.title or '-' }}</td>
+                                        <td><small>{{ attr.datatype_name or '-' }}</small></td>
+                                        <td><small class="text-info">{{ attr.property_name or '-' }}</small></td>
+                                        <td><small class="text-muted">{{ attr.source or '-' }}</small></td>
+                                        <td><small class="text-muted">{{ attr.target or '-' }}</small></td>
+                                        <td>
+                                            {% if attr.a_priznak == 1 %}
+                                                <span class="badge bg-success">Переносим миграцией</span>
+                                            {% elif attr.a_priznak == 2 %}
+                                                <span class="badge bg-danger">Не переносим</span>
+                                            {% elif attr.a_priznak == 3 %}
+                                                <span class="badge bg-warning">Переносим не миграцией</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Не определен</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
+                                                        class="btn btn-outline-info" 
+                                                        title="Открыть в админке источника">
+                                                    <i class="bi bi-arrow-up-left"></i>
+                                                </button>
+                                                <button onclick="openAdmin('{{ attr.admin_url }}')" 
+                                                        class="btn btn-outline-success" 
+                                                        title="Открыть в админке назначения">
+                                                    <i class="bi bi-arrow-up-right"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        {% else %}
+        <!-- Сложное отображение с анализом исключений -->
         <div class="accordion" id="classesAccordion">
             {% for class_name, class_data in result.classes.items() %}
             <div class="accordion-item mb-3">
@@ -239,6 +328,9 @@
                         <th>Имя</th>
                         <th>Заголовок</th>
                         <th>Тип</th>
+                        <th>Свойство</th>
+                        <th>Source</th>
+                        <th>Target</th>
                         <th>Признак</th>
                                             <th>Админка</th>
                     </tr>
@@ -250,6 +342,9 @@
                                             <td><strong>{{ attr.name or 'Без имени' }}</strong></td>
                                             <td>{{ attr.title or '-' }}</td>
                                             <td><small>{{ attr.datatype_name or '-' }}</small></td>
+                                            <td><small class="text-warning bg-warning bg-opacity-25 px-1 rounded">{{ attr.property_name or '-' }}</small></td>
+                                            <td><small class="text-info">{{ attr.source or '-' }}</small></td>
+                                            <td><small class="text-success">{{ attr.target or '-' }}</small></td>
                                             <td>
                                                 {% if attr.a_priznak == 1 %}
                                                     <span class="badge bg-success">Переносим миграцией</span>
@@ -297,6 +392,9 @@
                                             <th>Имя</th>
                                             <th>Заголовок</th>
                                             <th>Тип</th>
+                                            <th>Свойство</th>
+                                            <th>Source</th>
+                                            <th>Target</th>
                                             <th>Признак</th>
                                             <th>Админка</th>
                                         </tr>
@@ -308,6 +406,9 @@
                                             <td><strong>{{ attr.name or 'Без имени' }}</strong></td>
                                             <td>{{ attr.title or '-' }}</td>
                                             <td><small>{{ attr.datatype_name or '-' }}</small></td>
+                                            <td><small class="text-warning bg-warning bg-opacity-25 px-1 rounded">{{ attr.property_name or '-' }}</small></td>
+                                            <td><small class="text-muted">{{ attr.source or '-' }}</small></td>
+                                            <td><small class="text-muted">{{ attr.target or '-' }}</small></td>
                         <td>
                             {% if attr.a_priznak == 1 %}
                                 <span class="badge bg-success">Переносим миграцией</span>
@@ -355,6 +456,9 @@
                                             <th>Имя</th>
                                             <th>Заголовок</th>
                                             <th>Тип</th>
+                                            <th>Свойство</th>
+                                            <th>Source</th>
+                                            <th>Target</th>
                                             <th>Признак</th>
                                             <th>Админка</th>
                                         </tr>
@@ -366,6 +470,9 @@
                                             <td><strong>{{ attr.name or 'Без имени' }}</strong></td>
                                             <td>{{ attr.title or '-' }}</td>
                                             <td><small>{{ attr.datatype_name or '-' }}</small></td>
+                                            <td><small class="text-warning bg-warning bg-opacity-25 px-1 rounded">{{ attr.property_name or '-' }}</small></td>
+                                            <td><small class="text-warning">{{ attr.source or '-' }}</small></td>
+                                            <td><small class="text-warning">{{ attr.target or '-' }}</small></td>
                                             <td>
                                                 {% if attr.a_priznak == 1 %}
                                                     <span class="badge bg-success">Переносим миграцией</span>
@@ -395,7 +502,7 @@
                     {% endfor %}
                 </tbody>
             </table>
-                            </div>
+        </div>
                         </div>
                         {% endif %}
                         
@@ -404,6 +511,7 @@
             </div>
             {% endfor %}
         </div>
+        {% endif %}
         
         <!-- Пагинация -->
         {% if result.total_pages > 1 %}
@@ -412,7 +520,7 @@
                 {% if result.has_prev %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('attributes', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter) }}">
+                       href="{{ url_for('attributes', page=result.current_page-1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter, analyze_exceptions=current_filters.analyze_exceptions) }}">
                         <i class="bi bi-chevron-left"></i>
                     </a>
                 </li>
@@ -426,7 +534,7 @@
                     {% elif page_num == 1 or page_num == result.total_pages or (page_num >= result.current_page - 2 and page_num <= result.current_page + 2) %}
                     <li class="page-item">
                         <a class="page-link" 
-                           href="{{ url_for('attributes', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter) }}">
+                           href="{{ url_for('attributes', page=page_num, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter, analyze_exceptions=current_filters.analyze_exceptions) }}">
                             {{ page_num }}
                         </a>
                     </li>
@@ -440,7 +548,7 @@
                 {% if result.has_next %}
                 <li class="page-item">
                     <a class="page-link" 
-                       href="{{ url_for('attributes', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter) }}">
+                       href="{{ url_for('attributes', page=result.current_page+1, per_page=result.per_page, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url, exception_action_filter=current_filters.exception_action_filter, analyze_exceptions=current_filters.analyze_exceptions) }}">
                         <i class="bi bi-chevron-right"></i>
                     </a>
                 </li>
@@ -525,5 +633,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+function analyzeExceptions() {
+    // Получаем текущие параметры URL
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Добавляем параметр анализа исключений
+    urlParams.set('analyze_exceptions', 'true');
+    urlParams.set('page', '1'); // Сбрасываем на первую страницу
+    
+    // Перезагружаем страницу с новыми параметрами
+    window.location.href = window.location.pathname + '?' + urlParams.toString();
+}
 </script>
 {% endblock %} 

@@ -357,6 +357,21 @@ class DatabaseManager:
                     attr_name = parts[1].strip()
                     # Третья колонка attr_map игнорируется для исключений
                     
+                    # Определяем действие по умолчанию
+                    default_action = 0  # По умолчанию - игнорировать
+                    
+                    # Для атрибутов устанавливаем действие "обновить" для важных свойств
+                    if entity_type == 'attribute':
+                        # Свойства которые должны обновляться
+                        update_properties = [
+                            'readOnly', 'visible', 'informs', 'grp', 'title', 'description',
+                            'refClass', 'refAttr', 'defValue', 'length', 'mandatory',
+                            'calculated', 'guid', 'hierarchy', 'cascade'
+                        ]
+                        
+                        if attr_name in update_properties:
+                            default_action = 2  # Обновить
+                    
                     # Используем простой INSERT с WHERE NOT EXISTS для избежания дубликатов
                     insert_query = """
                         INSERT INTO __meta_statistic (entity_type, entity_name, property_name, action)
@@ -372,7 +387,7 @@ class DatabaseManager:
                         prep_stmt.setString(1, entity_type)
                         prep_stmt.setString(2, attr_name)
                         prep_stmt.setString(3, attr_title)
-                        prep_stmt.setInt(4, 0)
+                        prep_stmt.setInt(4, default_action)
                         prep_stmt.setString(5, entity_type)
                         prep_stmt.setString(6, attr_name)
                         prep_stmt.setString(7, attr_title)
