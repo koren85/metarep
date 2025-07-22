@@ -174,52 +174,85 @@ class DatabaseManager:
             finally:
                 self.connection = None
     
-    def execute_query(self, query: str) -> List[Tuple[Any, ...]]:
-        """Выполнение SELECT запроса"""
-        if not self.connection:
-            raise Exception("Нет соединения с БД")
+    def execute_query(self, query: str, params: List = None) -> List[List]:
+        """Выполнение запроса с возвращением результата"""
+        if self.connection is None:
+            if not self.connect():
+                raise Exception("Не удалось установить соединение с БД")
         
         try:
             statement = self.connection.createStatement()
-            
-            # Устанавливаем таймауты
-            statement.setQueryTimeout(self.db_config.query_timeout)
-            
-            resultSet = statement.executeQuery(query)
+            result_set = statement.executeQuery(query)
             
             # Получаем метаданные для определения количества колонок
-            metadata = resultSet.getMetaData()
+            metadata = result_set.getMetaData()
             column_count = metadata.getColumnCount()
             
+            # Собираем результаты
             results = []
-            while resultSet.next():
+            while result_set.next():
                 row = []
                 for i in range(1, column_count + 1):
-                    value = resultSet.getObject(i)
-                    # Преобразуем Java объекты в Python с правильной кодировкой
+                    value = result_set.getObject(i)
                     if value is not None:
+                        # Конвертируем Java объекты в Python
                         if hasattr(value, 'toString'):
-                            value_str = str(value)
-                            # Дополнительная проверка для русских символов
-                            # Если строка содержит вопросительные знаки, возможно проблема кодировки
-                            if isinstance(value_str, str) and '?' in value_str:
-                                self.logger.debug(f"Возможная проблема кодировки в значении: {value_str}")
-                            value = value_str
+                            row.append(str(value.toString()))
                         else:
-                            value = value
-                    row.append(value)
-                results.append(tuple(row))
+                            row.append(str(value))
+                    else:
+                        row.append(None)
+                results.append(row)
             
-            self.logger.info(f"Выполнен запрос, получено {len(results)} строк")
-            
-            resultSet.close()
+            result_set.close()
             statement.close()
-            
             return results
             
         except Exception as e:
-            self.logger.error(f"Ошибка выполнения запроса: {e}")
-            raise
+            # Проверяем не потеряно ли соединение
+            error_msg = str(e)
+            if any(keyword in error_msg.lower() for keyword in ['connection', 'socket', 'timeout', 'backend']):
+                self.logger.warning(f"Обнаружена ошибка соединения: {e}. Попытка переподключения...")
+                self.connection = None
+                # Пытаемся переподключиться и повторить запрос
+                if self.connect():
+                    self.logger.info("Переподключение успешно, повторяем запрос")
+                    try:
+                        statement = self.connection.createStatement()
+                        result_set = statement.executeQuery(query)
+                        
+                        # Получаем метаданные для определения количества колонок
+                        metadata = result_set.getMetaData()
+                        column_count = metadata.getColumnCount()
+                        
+                        # Собираем результаты
+                        results = []
+                        while result_set.next():
+                            row = []
+                            for i in range(1, column_count + 1):
+                                value = result_set.getObject(i)
+                                if value is not None:
+                                    # Конвертируем Java объекты в Python
+                                    if hasattr(value, 'toString'):
+                                        row.append(str(value.toString()))
+                                    else:
+                                        row.append(str(value))
+                                else:
+                                    row.append(None)
+                            results.append(row)
+                        
+                        result_set.close()
+                        statement.close()
+                        return results
+                    except Exception as retry_error:
+                        self.logger.error(f"Ошибка при повторном выполнении запроса: {retry_error}")
+                        raise retry_error
+                else:
+                    self.logger.error("Переподключение не удалось")
+                    raise e
+            else:
+                self.logger.error(f"Ошибка выполнения запроса: {e}")
+                raise e
     
     def execute_update(self, query: str) -> int:
         """Выполнение INSERT/UPDATE/DELETE запроса"""

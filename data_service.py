@@ -335,9 +335,25 @@ class DataService:
                 overall_action = -1  # По умолчанию - БЕЗ ДЕЙСТВИЯ (-1, не 0!)
                 
                 if analyze_exceptions:
-                    exception_actions = self._analyze_attribute_exceptions_cached(row[0], row[1], row[9], exceptions_cache)
-                    
-                    overall_action = self._get_overall_exception_action(exception_actions)
+                    try:
+                        exception_actions = self._analyze_attribute_exceptions_cached(row[0], row[1], row[9], exceptions_cache)
+                        
+                        overall_action = self._get_overall_exception_action(exception_actions)
+                    except Exception as e:
+                        print(f"[DEBUG] Критическая ошибка анализа для атрибута {row[1]}: {e}")
+                        # При критической ошибке БД пытаемся переподключиться
+                        try:
+                            if self.db_manager.connect():
+                                print(f"[DEBUG] Переподключение к БД успешно")
+                                # Пытаемся повторно анализировать этот атрибут
+                                exception_actions = self._analyze_attribute_exceptions_cached(row[0], row[1], row[9], exceptions_cache)
+                                overall_action = self._get_overall_exception_action(exception_actions)
+                            else:
+                                print(f"[DEBUG] Переподключение не удалось, атрибут {row[1]} будет помечен как без действия")
+                        except Exception as reconnect_error:
+                            print(f"[DEBUG] Ошибка переподключения: {reconnect_error}")
+                        
+                        # Если все попытки анализа провалились, то overall_action остается -1 (без действия)
                 
                 # Получаем OUID атрибута назначения для admin_url
                 target_ouid = self._get_target_attribute_ouid(row[11], row[1]) if base_url and row[11] else None
@@ -1432,6 +1448,11 @@ class DataService:
             return []
         
         try:
+            # Проверяем соединение перед выполнением запроса
+            if self.db_manager.connection is None:
+                print(f"[DEBUG] Ошибка анализа исключений для {attr_name}: Нет соединения с БД")
+                return []
+            
             # Парсим a_log как делается в get_attribute_differences
             attr_blocks_query = f"""
                 WITH source_data AS (
@@ -1494,7 +1515,7 @@ class DataService:
             
             # Собираем действия для всех свойств атрибута
             exception_actions = []
-            max_action = 0  # Максимальное действие (0=игнорировать, 2=обновить)
+            max_action = 0
             
             for row in result:
                 ouid, name, attribute_name, source_value, target_value = row
@@ -1524,6 +1545,12 @@ class DataService:
             
         except Exception as e:
             print(f"[DEBUG] Ошибка анализа исключений для {attr_name}: {e}")
+            # При ошибке БД пытаемся переподключиться
+            try:
+                if not self.db_manager.connect():
+                    print(f"[DEBUG] Не удалось переподключиться к БД")
+            except:
+                pass
             return []
 
     def _get_difference_type(self, source_value: str, target_value: str) -> str:
