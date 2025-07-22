@@ -117,25 +117,45 @@
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1>Анализ атрибутов по исключениям</h1>
             <div class="text-muted">
-                {% if result.total_count > 0 %}
-                    Всего {{ result.total_count }} атрибутов в {{ result.total_classes }} классах
+                {% if result.error %}
+                    Ошибка загрузки данных
+                {% elif result.total_count > 0 %}
+                    Всего {{ result.total_count }} атрибутов
+                    {% if result.analyze_exceptions %} в {{ result.total_classes }} классах{% endif %}
                 {% else %}
                     Атрибутов не найдено
                 {% endif %}
             </div>
         </div>
         
+        <!-- Информация об оптимизации -->
+        {% if result.optimization_info %}
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="bi bi-lightning-fill"></i>
+            <strong>Оптимизированная загрузка:</strong> 
+            обработано {{ result.total_count }} атрибутов за {{ "%.2f"|format(result.optimization_info.total_time) }} сек
+            (SQL: {{ "%.2f"|format(result.optimization_info.query_time) }}с)
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+        
         <!-- Кнопки управления -->
         <div class="mb-3">
-            {% if not current_filters.analyze_exceptions %}
+            {% if not result.analyze_exceptions %}
             <button onclick="analyzeExceptions()" class="btn btn-primary">
                 <i class="bi bi-gear"></i> Анализировать исключения
             </button>
+            <div class="text-muted mt-2">
+                <small><i class="bi bi-info-circle"></i> Быстрый режим - без анализа исключений для максимальной скорости</small>
+            </div>
             {% else %}
             <a href="{{ url_for('attributes', page=1, per_page=current_filters.per_page or 20, search=current_filters.search, status_variance=current_filters.status_variance, event=current_filters.event, a_priznak=current_filters.a_priznak, base_url=current_filters.base_url, source_base_url=current_filters.source_base_url) }}" 
                class="btn btn-secondary">
-                <i class="bi bi-arrow-left"></i> Показать без анализа
+                <i class="bi bi-arrow-left"></i> Быстрый режим
             </a>
+            <div class="text-muted mt-2">
+                <small><i class="bi bi-gear-fill"></i> Полный режим - с анализом исключений и группировкой по действиям</small>
+            </div>
             {% endif %}
         </div>
         
@@ -187,100 +207,77 @@
         </div>
         {% endif %}
         
-        <!-- Группировка атрибутов по классам -->
-        {% if result.classes %}
-        
-        {% if not result.analyze_exceptions %}
-        <!-- Простое отображение атрибутов без анализа исключений -->
-        <div class="accordion" id="classesAccordion">
-            {% for class_name, class_data in result.classes.items() %}
-            <div class="accordion-item mb-3">
-                <h2 class="accordion-header" id="heading-simple-{{ loop.index }}">
-                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
-                            data-bs-target="#collapse-simple-{{ loop.index }}" aria-expanded="false" 
-                            aria-controls="collapse-simple-{{ loop.index }}">
-                        <div class="w-100">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong>{{ class_data.class_name }}</strong>
-                                    {% if class_data.class_description %}
-                                        <br><small class="text-muted">{{ class_data.class_description }}</small>
-                                    {% endif %}
-                                </div>
-                                <div class="me-3">
-                                    <span class="badge bg-primary">{{ class_data.statistics.total_count }} атрибутов</span>
-                                </div>
-                            </div>
-                        </div>
-                    </button>
-                </h2>
-                <div id="collapse-simple-{{ loop.index }}" class="accordion-collapse collapse" 
-                     aria-labelledby="heading-simple-{{ loop.index }}" data-bs-parent="#classesAccordion">
-                    <div class="accordion-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-striped mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Имя</th>
-                                        <th>Заголовок</th>
-                                        <th>Тип</th>
-                                        <th>Свойство</th>
-                                        <th>Source</th>
-                                        <th>Target</th>
-                                        <th>Признак</th>
-                                        <th>Админка</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for attr in class_data.attributes.all_list %}
-                                    <tr>
-                                        <td><code>{{ attr.ouid }}</code></td>
-                                        <td><strong>{{ attr.name or 'Без имени' }}</strong></td>
-                                        <td>{{ attr.title or '-' }}</td>
-                                        <td><small>{{ attr.datatype_name or '-' }}</small></td>
-                                        <td><small class="text-info">{{ attr.property_name or '-' }}</small></td>
-                                        <td><small class="text-muted">{{ attr.source or '-' }}</small></td>
-                                        <td><small class="text-muted">{{ attr.target or '-' }}</small></td>
-                                        <td>
-                                            {% if attr.a_priznak == 1 %}
-                                                <span class="badge bg-success">Переносим миграцией</span>
-                                            {% elif attr.a_priznak == 2 %}
-                                                <span class="badge bg-danger">Не переносим</span>
-                                            {% elif attr.a_priznak == 3 %}
-                                                <span class="badge bg-warning">Переносим не миграцией</span>
-                                            {% else %}
-                                                <span class="badge bg-secondary">Не определен</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            <div class="btn-group btn-group-sm">
-                                                <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
-                                                        class="btn btn-outline-info" 
-                                                        title="Открыть в админке источника">
-                                                    <i class="bi bi-arrow-up-left"></i>
-                                                </button>
-                                                <button onclick="openAdmin('{{ attr.admin_url }}')" 
-                                                        class="btn btn-outline-success" 
-                                                        title="Открыть в админке назначения">
-                                                    <i class="bi bi-arrow-up-right"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
+        <!-- Обработка ошибок -->
+        {% if result.error %}
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle"></i>
+            <strong>Ошибка:</strong> {{ result.error }}
         </div>
         
-        {% else %}
-        <!-- Сложное отображение с анализом исключений -->
-        <div class="accordion" id="classesAccordion">
+        <!-- БЫСТРЫЙ РЕЖИМ: Простая таблица атрибутов -->
+        {% elif result.attributes and result.attributes.fast_mode %}
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-lightning"></i> Быстрый режим - {{ result.attributes.fast_mode|length }} атрибутов</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Имя</th>
+                                <th>Заголовок</th>
+                                <th>Класс</th>
+                                <th>Тип</th>
+                                <th>Признак</th>
+                                <th>Админка</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for attr in result.attributes.fast_mode %}
+                            <tr>
+                                <td><code>{{ attr.ouid }}</code></td>
+                                <td><strong>{{ attr.name or 'Без имени' }}</strong></td>
+                                <td>{{ attr.title or '-' }}</td>
+                                <td><small class="text-primary">{{ attr.class_name or 'Без класса' }}</small></td>
+                                <td><small>{{ attr.datatype_name or '-' }}</small></td>
+                                <td>
+                                    {% if attr.a_priznak == 1 %}
+                                        <span class="badge bg-success">Переносим миграцией</span>
+                                    {% elif attr.a_priznak == 2 %}
+                                        <span class="badge bg-danger">Не переносим</span>
+                                    {% elif attr.a_priznak == 3 %}
+                                        <span class="badge bg-warning">Переносим не миграцией</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Не определен</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
+                                                class="btn btn-outline-info" 
+                                                title="Открыть в админке источника">
+                                            <i class="bi bi-arrow-up-left"></i>
+                                        </button>
+                                        <button onclick="openAdmin('{{ attr.admin_url }}')" 
+                                                class="btn btn-outline-success" 
+                                                title="Открыть в админке назначения">
+                                            <i class="bi bi-arrow-up-right"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ПОЛНЫЙ РЕЖИМ: Группировка атрибутов по классам -->
+        {% elif result.classes %}
+        <div class="accordion" id="classesAccordion" data-has-action-filter="{% if current_filters.exception_action_filter is not none %}true{% else %}false{% endif %}">
             {% for class_name, class_data in result.classes.items() %}
             <div class="accordion-item mb-3">
                 <h2 class="accordion-header" id="heading-{{ loop.index }}">
@@ -320,24 +317,24 @@
                             <div class="p-3 bg-info text-white">
                                 <h6 class="mb-0"><i class="bi bi-arrow-clockwise"></i> Атрибуты для обновления ({{ class_data.attributes.update_list|length }})</h6>
                             </div>
-        <div class="table-responsive">
+                            <div class="table-responsive">
                                 <table class="table table-striped mb-0">
                                     <thead class="table-light">
-                    <tr>
-                        <th>ID</th>
-                        <th>Имя</th>
-                        <th>Заголовок</th>
-                        <th>Тип</th>
-                        <th>Свойство</th>
-                        <th>Source</th>
-                        <th>Target</th>
-                        <th>Признак</th>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Имя</th>
+                                            <th>Заголовок</th>
+                                            <th>Тип</th>
+                                            <th>Свойство</th>
+                                            <th>Source</th>
+                                            <th>Target</th>
+                                            <th>Признак</th>
                                             <th>Админка</th>
-                    </tr>
-                </thead>
-                <tbody>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
                                         {% for attr in class_data.attributes.update_list %}
-                    <tr>
+                                        <tr>
                                             <td><code>{{ attr.ouid }}</code></td>
                                             <td><strong>{{ attr.name or 'Без имени' }}</strong></td>
                                             <td>{{ attr.title or '-' }}</td>
@@ -355,8 +352,8 @@
                                                 {% else %}
                                                     <span class="badge bg-secondary">Не определен</span>
                                                 {% endif %}
-                        </td>
-                        <td>
+                                            </td>
+                                            <td>
                                                 <div class="btn-group btn-group-sm">
                                                     <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
                                                             class="btn btn-outline-info" 
@@ -369,7 +366,7 @@
                                                         <i class="bi bi-arrow-up-right"></i>
                                                     </button>
                                                 </div>
-                        </td>
+                                            </td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
@@ -409,18 +406,18 @@
                                             <td><small class="text-warning bg-warning bg-opacity-25 px-1 rounded">{{ attr.property_name or '-' }}</small></td>
                                             <td><small class="text-muted">{{ attr.source or '-' }}</small></td>
                                             <td><small class="text-muted">{{ attr.target or '-' }}</small></td>
-                        <td>
-                            {% if attr.a_priznak == 1 %}
-                                <span class="badge bg-success">Переносим миграцией</span>
-                            {% elif attr.a_priznak == 2 %}
-                                <span class="badge bg-danger">Не переносим</span>
-                            {% elif attr.a_priznak == 3 %}
-                                <span class="badge bg-warning">Переносим не миграцией</span>
-                            {% else %}
-                                <span class="badge bg-secondary">Не определен</span>
-                            {% endif %}
-                        </td>
-                        <td>
+                                            <td>
+                                                {% if attr.a_priznak == 1 %}
+                                                    <span class="badge bg-success">Переносим миграцией</span>
+                                                {% elif attr.a_priznak == 2 %}
+                                                    <span class="badge bg-danger">Не переносим</span>
+                                                {% elif attr.a_priznak == 3 %}
+                                                    <span class="badge bg-warning">Переносим не миграцией</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">Не определен</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
                                                 <div class="btn-group btn-group-sm">
                                                     <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
                                                             class="btn btn-outline-info" 
@@ -480,29 +477,29 @@
                                                     <span class="badge bg-danger">Не переносим</span>
                                                 {% elif attr.a_priznak == 3 %}
                                                     <span class="badge bg-warning">Переносим не миграцией</span>
-                            {% else %}
+                                                {% else %}
                                                     <span class="badge bg-secondary">Не определен</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
-                                        class="btn btn-outline-info" 
-                                        title="Открыть в админке источника">
-                                    <i class="bi bi-arrow-up-left"></i>
-                                </button>
-                                <button onclick="openAdmin('{{ attr.admin_url }}')" 
-                                        class="btn btn-outline-success" 
-                                        title="Открыть в админке назначения">
-                                    <i class="bi bi-arrow-up-right"></i>
-                                </button>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm">
+                                                    <button onclick="openAdmin('{{ attr.source_admin_url }}')" 
+                                                            class="btn btn-outline-info" 
+                                                            title="Открыть в админке источника">
+                                                        <i class="bi bi-arrow-up-left"></i>
+                                                    </button>
+                                                    <button onclick="openAdmin('{{ attr.admin_url }}')" 
+                                                            class="btn btn-outline-success" 
+                                                            title="Открыть в админке назначения">
+                                                        <i class="bi bi-arrow-up-right"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
                             </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
                         </div>
                         {% endif %}
                         
@@ -511,11 +508,22 @@
             </div>
             {% endfor %}
         </div>
+        
+        {% elif not result.error %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> 
+            <strong>Атрибутов не найдено</strong><br>
+            {% if current_filters.exception_action_filter is not none %}
+                Попробуйте сбросить фильтр по действиям исключений или изменить другие параметры фильтра.
+            {% else %}
+                Попробуйте изменить параметры фильтра или сбросить все фильтры.
+            {% endif %}
+        </div>
         {% endif %}
         
         <!-- Пагинация -->
         {% if result.total_pages > 1 %}
-        <nav aria-label="Навигация по страницам">
+        <nav aria-label="Навигация по страницам" class="mt-4">
             <ul class="pagination justify-content-center">
                 {% if result.has_prev %}
                 <li class="page-item">
@@ -556,18 +564,6 @@
             </ul>
         </nav>
         {% endif %}
-        
-        {% else %}
-        <div class="alert alert-info">
-            <i class="bi bi-info-circle"></i> 
-            <strong>Классов с атрибутами не найдено</strong><br>
-            {% if current_filters.exception_action_filter is not none %}
-                Попробуйте сбросить фильтр по действиям исключений или изменить другие параметры фильтра.
-            {% else %}
-                Попробуйте изменить параметры фильтра или сбросить все фильтры.
-            {% endif %}
-        </div>
-        {% endif %}
     </div>
 </div>
 
@@ -589,50 +585,20 @@
 .border-start {
     border-left-width: 3px !important;
 }
+
+.alert-success {
+    border-left: 4px solid #198754;
+}
+
+.text-decoration-none:hover {
+    text-decoration: none !important;
+}
 </style>
 
 <script>
 function openAdmin(url) {
     window.open(url, '_blank', 'width=1200,height=800');
 }
-
-// Управление аккордеоном классов
-document.addEventListener('DOMContentLoaded', function() {
-    const expandAllBtn = document.getElementById('expand-all');
-    const collapseAllBtn = document.getElementById('collapse-all');
-    
-    if (expandAllBtn) {
-        expandAllBtn.addEventListener('click', function() {
-            const allCollapses = document.querySelectorAll('#classesAccordion .accordion-collapse');
-            const allButtons = document.querySelectorAll('#classesAccordion .accordion-button');
-            
-            allCollapses.forEach(function(collapse) {
-                const bsCollapse = new bootstrap.Collapse(collapse, {show: true});
-            });
-            
-            allButtons.forEach(function(button) {
-                button.classList.remove('collapsed');
-                button.setAttribute('aria-expanded', 'true');
-            });
-        });
-    }
-    
-    if (collapseAllBtn) {
-        collapseAllBtn.addEventListener('click', function() {
-            const allCollapses = document.querySelectorAll('#classesAccordion .accordion-collapse');
-            const allButtons = document.querySelectorAll('#classesAccordion .accordion-button');
-            
-            allCollapses.forEach(function(collapse) {
-                const bsCollapse = new bootstrap.Collapse(collapse, {hide: true});
-            });
-            
-            allButtons.forEach(function(button) {
-                button.classList.add('collapsed');
-                button.setAttribute('aria-expanded', 'false');
-            });
-        });
-    }
-});
 
 function analyzeExceptions() {
     // Получаем текущие параметры URL
@@ -642,8 +608,28 @@ function analyzeExceptions() {
     urlParams.set('analyze_exceptions', 'true');
     urlParams.set('page', '1'); // Сбрасываем на первую страницу
     
+    // Показываем лоадер
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-gear-fill spinner-border spinner-border-sm"></i> Анализирую...';
+    btn.disabled = true;
+    
     // Перезагружаем страницу с новыми параметрами
     window.location.href = window.location.pathname + '?' + urlParams.toString();
 }
+
+// Управление аккордеоном классов
+document.addEventListener('DOMContentLoaded', function() {
+    // Если есть фильтр по действиям - автоматически раскрываем все аккордеоны
+    const accordion = document.querySelector('#classesAccordion');
+    if (accordion && accordion.dataset.hasActionFilter === 'true') {
+        setTimeout(function() {
+            const allCollapses = document.querySelectorAll('#classesAccordion .accordion-collapse');
+            allCollapses.forEach(function(collapse) {
+                new bootstrap.Collapse(collapse, {show: true});
+            });
+        }, 100);
+    }
+});
 </script>
 {% endblock %} 

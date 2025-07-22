@@ -5,6 +5,7 @@ import math
 from typing import List, Dict, Any, Optional, Tuple
 from database_manager import PostgreSQLManager
 from config import config
+import time
 
 class DataService:
     """Сервис для работы с данными приложения"""
@@ -242,13 +243,35 @@ class DataService:
                       event: int = None, a_priznak: int = None, base_url: str = None,
                       source_base_url: str = None, exception_action_filter: int = None,
                       analyze_exceptions: bool = False) -> Dict[str, Any]:
-        """Получение списка атрибутов с фильтрацией, пагинацией и анализом исключений"""
+        """Получение списка атрибутов с фильтрацией, пагинацией и анализом исключений (ОПТИМИЗИРОВАННАЯ ВЕРСИЯ)"""
         
-        # Базовый запрос
+        try:
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+            
+            print(f"[DEBUG] Оптимизированный get_attributes: analyze_exceptions={analyze_exceptions}")
+            
+            # ЭТАП 1: Быстрый запрос только атрибутов БЕЗ анализа исключений
+            if not analyze_exceptions:
+                return self._get_attributes_fast_mode(page, per_page, search, status_variance, event, a_priznak, base_url, source_base_url)
+            
+            # ЭТАП 2: Полный режим с анализом исключений - ОДИН запрос для всех данных
+            return self._get_attributes_with_exceptions_optimized(page, per_page, search, status_variance, event, a_priznak, base_url, source_base_url, exception_action_filter)
+            
+        except Exception as e:
+            print(f"[ERROR] Ошибка в оптимизированном get_attributes: {e}")
+            return {"error": f"Ошибка выполнения запроса: {e}"}
+        finally:
+            self.db_manager.disconnect()
+    
+    def _get_attributes_fast_mode(self, page: int, per_page: int, search: str, status_variance: int, 
+                                 event: int, a_priznak: int, base_url: str, source_base_url: str) -> Dict[str, Any]:
+        """Быстрый режим получения атрибутов БЕЗ анализа исключений"""
+        
+        # Базовый запрос без анализа исключений
         where_conditions = []
         
         if search:
-            # Экранируем кавычки для безопасности
             search_escaped = search.replace("'", "''")
             where_conditions.append(f"(a.name ILIKE '%{search_escaped}%' OR a.title ILIKE '%{search_escaped}%' OR a.description ILIKE '%{search_escaped}%')")
             
@@ -263,219 +286,347 @@ class DataService:
             
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
-        # Запрос для получения ВСЕХ атрибутов по фильтрам (без пагинации)
-        all_attributes_query = f"""
+        # Получаем общее количество
+        count_query = f"""
+            SELECT COUNT(*) 
+            FROM sxattr_source a
+            LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
+            WHERE {where_clause}
+        """
+        
+        total_count = int(self.db_manager.execute_query(count_query)[0][0])
+        
+        # Основной запрос с пагинацией
+        offset = (page - 1) * per_page
+        main_query = f"""
             SELECT a.ouid, a.name, a.description, a.title, a.ouiddatatype, 
                    a.ouidsxclass, a.a_event, a.a_status_variance, a.a_priznak, 
-                   a.a_log, d.description as datatype_name,
-                   c.name as class_name, c.description as class_description
+                   d.description as datatype_name, c.name as class_name, 
+                   c.description as class_description
             FROM sxattr_source a
             LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
             LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
             WHERE {where_clause}
             ORDER BY c.name, a.title, a.name
+            LIMIT {per_page} OFFSET {offset}
         """
         
-        try:
-            if not self.db_manager.connect():
-                return {"error": "Ошибка подключения к БД"}
-                
-            # Получаем ВСЕ атрибуты по фильтрам
-            all_attributes = self.db_manager.execute_query(all_attributes_query)
-            print(f"[DEBUG] Total attributes found: {len(all_attributes)}")
+        attributes = self.db_manager.execute_query(main_query)
+        
+        # Преобразуем в словари для быстрого режима
+        attributes_list = []
+        for row in attributes:
+            target_ouid = self._get_target_attribute_ouid(row[10], row[1]) if base_url and row[10] else None
             
-            # Кэшируем таблицу исключений только если нужен анализ
-            exceptions_cache = {}
-            if analyze_exceptions:
-                exceptions_cache = self._load_exceptions_cache()
-                print(f"[DEBUG] Загружено {len(exceptions_cache)} исключений в кэш для анализа")
-                # Покажем первые 5 записей кэша
-                cache_preview = list(exceptions_cache.items())[:5]
-                print(f"[DEBUG] Превью кэша: {cache_preview}")
-                # Покажем конкретные ключи которые могут быть в тестах
-                test_keys = ['attribute:informs', 'attribute:readOnly', 'attribute:grp', 'attribute:guid']
-                for test_key in test_keys:
-                    if test_key in exceptions_cache:
-                        print(f"[DEBUG] Найден ключ {test_key} = {exceptions_cache[test_key]}")
-                    else:
-                        print(f"[DEBUG] Ключ {test_key} НЕ найден в кэше")
+            attributes_list.append({
+                'ouid': row[0],
+                'name': row[1],
+                'description': row[2],
+                'title': row[3],
+                'ouiddatatype': row[4],
+                'ouidsxclass': row[5],
+                'a_event': row[6],
+                'a_status_variance': row[7],
+                'a_priznak': row[8],
+                'datatype_name': row[9],
+                'class_name': row[10],
+                'class_description': row[11],
+                'admin_url': self._build_admin_url(target_ouid or row[0], 'SXAttr', base_url),
+                'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url),
+                'overall_action': -1,  # Без действия
+                'overall_action_name': 'Без анализа исключений'
+            })
+        
+        total_pages = math.ceil(total_count / per_page) if total_count > 0 else 0
+        
+        print(f"[DEBUG] Быстрый режим: обработано {len(attributes_list)} атрибутов за {total_count} всего")
+        
+        return {
+            'attributes': {'fast_mode': attributes_list},
+            'total_count': total_count,
+            'total_classes': 1,  # Не важно для быстрого режима
+            'total_pages': total_pages,
+            'current_page': page,
+            'per_page': per_page,
+            'has_prev': page > 1,
+            'has_next': page < total_pages,
+            'statistics': {'total_count': total_count},
+            'analyze_exceptions': False
+        }
+    
+    def _get_attributes_with_exceptions_optimized(self, page: int, per_page: int, search: str, 
+                                                 status_variance: int, event: int, a_priznak: int,
+                                                 base_url: str, source_base_url: str, exception_action_filter: int) -> Dict[str, Any]:
+        """ОПТИМИЗИРОВАННАЯ версия с анализом исключений - ОДИН SQL запрос"""
+        
+        # Базовые условия фильтрации
+        where_conditions = []
+        
+        if search:
+            search_escaped = search.replace("'", "''")
+            where_conditions.append(f"(a.name ILIKE '%{search_escaped}%' OR a.title ILIKE '%{search_escaped}%' OR a.description ILIKE '%{search_escaped}%')")
             
-            # Группируем атрибуты по классам
-            classes_data = {}
-            total_statistics = {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
-            attr_counter = 0
+        if status_variance is not None:
+            where_conditions.append(f"a.a_status_variance = {status_variance}")
             
-            for row in all_attributes:
-                attr_counter += 1
-                class_name = row[11] or 'Без класса'
-                class_description = row[12] or ''
-                class_ouid = row[5]
-                
-                # Инициализируем данные класса если еще нет
-                if class_name not in classes_data:
-                    if analyze_exceptions:
-                        classes_data[class_name] = {
-                            'class_name': class_name,
-                            'class_description': class_description,
-                            'class_ouid': class_ouid,
-                            'attributes': {'ignore_list': [], 'update_list': [], 'no_action_list': []},
-                            'statistics': {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
-                        }
-                    else:
-                        classes_data[class_name] = {
-                            'class_name': class_name,
-                            'class_description': class_description,
-                            'class_ouid': class_ouid,
-                            'attributes': {'all_list': []},
-                            'statistics': {'total_count': 0}
-                        }
-                
-                # Анализируем исключения только если включен анализ
-                exception_actions = []
-                overall_action = -1  # По умолчанию - БЕЗ ДЕЙСТВИЯ (-1, не 0!)
-                
-                if analyze_exceptions:
-                    try:
-                        exception_actions = self._analyze_attribute_exceptions_cached(row[0], row[1], row[9], exceptions_cache)
-                        
-                        overall_action = self._get_overall_exception_action(exception_actions)
-                    except Exception as e:
-                        print(f"[DEBUG] Критическая ошибка анализа для атрибута {row[1]}: {e}")
-                        # При критической ошибке БД пытаемся переподключиться
-                        try:
-                            if self.db_manager.connect():
-                                print(f"[DEBUG] Переподключение к БД успешно")
-                                # Пытаемся повторно анализировать этот атрибут
-                                exception_actions = self._analyze_attribute_exceptions_cached(row[0], row[1], row[9], exceptions_cache)
-                                overall_action = self._get_overall_exception_action(exception_actions)
-                            else:
-                                print(f"[DEBUG] Переподключение не удалось, атрибут {row[1]} будет помечен как без действия")
-                        except Exception as reconnect_error:
-                            print(f"[DEBUG] Ошибка переподключения: {reconnect_error}")
-                        
-                        # Если все попытки анализа провалились, то overall_action остается -1 (без действия)
-                
-                # Получаем OUID атрибута назначения для admin_url
-                target_ouid = self._get_target_attribute_ouid(row[11], row[1]) if base_url and row[11] else None
-                
-                # Извлекаем source, target и свойство из первого исключения для отображения
-                source_value = ''
-                target_value = ''
-                property_name = ''
-                if exception_actions and len(exception_actions) > 0:
-                    source_value = exception_actions[0].get('source_value', '')
-                    target_value = exception_actions[0].get('target_value', '')
-                    # Собираем все имена свойств через запятую
-                    property_names = [exc.get('property_name', '') for exc in exception_actions if exc.get('property_name')]
-                    property_name = ', '.join(property_names) if property_names else ''
-                
-                attr_data = {
-                    'ouid': row[0],
-                    'name': row[1],
-                    'description': row[2],
-                    'title': row[3],
-                    'ouiddatatype': row[4],
-                    'ouidsxclass': row[5],
-                    'a_event': row[6],
-                    'a_status_variance': row[7],
-                    'a_priznak': row[8],
-                    'datatype_name': row[10],
-                    'class_name': row[11],
-                    'class_description': row[12],
-                    'property_name': property_name,  # Добавляем имя свойства
-                    'source': source_value,  # Добавляем source
-                    'target': target_value,  # Добавляем target
-                    'admin_url': self._build_admin_url(target_ouid or row[0], 'SXAttr', base_url),
-                    'source_admin_url': self._build_admin_url(row[0], 'SXAttr', source_base_url),
-                    'exception_actions': exception_actions,
-                    'overall_action': overall_action,
-                    'overall_action_name': self._get_action_name(overall_action)
-                }
-                
-                # Группируем по действиям внутри класса только если включен анализ
-                if analyze_exceptions:
-                    # Отладка группировки для первых атрибутов
-                    if attr_counter <= 5:
-                        print(f"[DEBUG] Группировка атрибута {row[1]}: overall_action={overall_action}, исключений={len(exception_actions)}")
-                    
-                    if overall_action == 0:  # ИГНОРИРОВАТЬ
-                        classes_data[class_name]['attributes']['ignore_list'].append(attr_data)
-                        classes_data[class_name]['statistics']['ignore_count'] += 1
-                        total_statistics['ignore_count'] += 1
-                    elif overall_action == 2:  # ОБНОВИТЬ 
-                        classes_data[class_name]['attributes']['update_list'].append(attr_data)
-                        classes_data[class_name]['statistics']['update_count'] += 1
-                        total_statistics['update_count'] += 1
-                        # Дополнительная отладка для действий=2
-                        if total_statistics['update_count'] <= 3:
-                            print(f"[DEBUG] ✅ Атрибут {row[1]} добавлен в update_list! total_update_count={total_statistics['update_count']}")
-                    else:  # БЕЗ ДЕЙСТВИЯ (overall_action == -1 или другие значения)
-                        classes_data[class_name]['attributes']['no_action_list'].append(attr_data)
-                        classes_data[class_name]['statistics']['no_action_count'] += 1
-                        total_statistics['no_action_count'] += 1
-                        # Отладка для атрибутов без действия
-                        if attr_counter <= 5 and overall_action == -1:
-                            print(f"[DEBUG] 📝 Атрибут {row[1]} добавлен в no_action_list (без исключений)")
-                        elif attr_counter <= 5:
-                            print(f"[DEBUG] ⚠️ Атрибут {row[1]} попал в no_action_list с неожиданным overall_action={overall_action}")
-                else:
-                    # Без анализа исключений - все атрибуты в одну группу
-                    classes_data[class_name]['attributes']['all_list'].append(attr_data)
-                    classes_data[class_name]['statistics']['total_count'] = classes_data[class_name]['statistics'].get('total_count', 0) + 1
-                    total_statistics['total_count'] = total_statistics.get('total_count', 0) + 1
+        if event is not None:
+            where_conditions.append(f"a.a_event = {event}")
             
-            # Применяем фильтр по действиям исключений если задан
-            if exception_action_filter is not None:
-                filtered_classes_data = {}
-                for class_name, class_data in classes_data.items():
-                    if exception_action_filter == 0 and class_data['statistics']['ignore_count'] > 0:
-                        filtered_classes_data[class_name] = class_data
-                    elif exception_action_filter == 2 and class_data['statistics']['update_count'] > 0:
-                        filtered_classes_data[class_name] = class_data
-                    elif exception_action_filter == -1 and class_data['statistics']['no_action_count'] > 0:  # -1 для "без действия"
-                        filtered_classes_data[class_name] = class_data
-                classes_data = filtered_classes_data
+        if a_priznak is not None:
+            where_conditions.append(f"a.a_priznak = {a_priznak}")
             
-            # Применяем пагинацию к классам
-            class_names = list(classes_data.keys())
-            total_classes = len(class_names)
-            total_attributes_count = len(all_attributes)
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        print(f"[DEBUG] ОПТИМИЗИРОВАННЫЙ запрос с where: {where_clause}")
+        
+        # ОДИН мощный SQL запрос - получаем ВСЕ атрибуты И их различия сразу
+        optimized_query = f"""
+            WITH 
+            -- Получаем все атрибуты
+            attrs_data AS (
+                SELECT 
+                    a.ouid, a.name, a.description, a.title, a.ouiddatatype, 
+                    a.ouidsxclass, a.a_event, a.a_status_variance, a.a_priznak, 
+                    a.a_log, d.description as datatype_name,
+                    c.name as class_name, c.description as class_description
+                FROM sxattr_source a
+                LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
+                LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
+                WHERE {where_clause}
+            ),
+            -- Парсим различия для ВСЕХ атрибутов одним запросом
+            parsed_differences AS (
+                SELECT 
+                    a.ouid as attr_ouid,
+                    a.name as attr_name,
+                    a.class_name,
+                    attr_blocks.attribute_name,
+                    attr_blocks.source_value,
+                    attr_blocks.target_value
+                FROM attrs_data a
+                CROSS JOIN LATERAL (
+                    SELECT 
+                        trim(split_part(attr_block, E'\\n', 1)) as attribute_name,
+                        COALESCE(
+                            trim(
+                                split_part(
+                                    substring(attr_block from 'source[[:space:]]*=[[:space:]]*(.*)'),
+                                    'target =',
+                                    1
+                                )
+                            ),
+                            ''
+                        ) as source_value,
+                        COALESCE(
+                            trim(regexp_replace(
+                                substring(attr_block from 'target[[:space:]]*=[[:space:]]*([^\\n]*(?:\\n[[:space:]]+[^\\n]*)*?)(?=\\n[^[:space:]]|$)'),
+                                '^[[:space:]]*', '', 'g'
+                            )),
+                            ''
+                        ) as target_value
+                    FROM unnest(
+                        regexp_split_to_array(
+                            a.a_log,
+                            E'(?=\\n[^[:space:]\\n])'
+                        )
+                    ) AS attr_block
+                    WHERE attr_block ~ 'source[[:space:]]*='
+                        AND trim(split_part(attr_block, E'\\n', 1)) != ''
+                        AND length(trim(attr_block)) > 0
+                ) attr_blocks
+                WHERE a.a_log IS NOT NULL AND a.a_log != ''
+            ),
+            -- Получаем исключения
+            exceptions_data AS (
+                SELECT entity_type, entity_name, property_name, action
+                FROM __meta_statistic
+                WHERE entity_type = 'attribute'
+            )
+            -- Основной результат
+            SELECT 
+                a.ouid, a.name, a.description, a.title, a.ouiddatatype, 
+                a.ouidsxclass, a.a_event, a.a_status_variance, a.a_priznak, 
+                a.datatype_name, a.class_name, a.class_description,
+                -- Агрегируем все различия атрибута в JSON
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'property_name', pd.attribute_name,
+                            'source_value', pd.source_value,
+                            'target_value', pd.target_value,
+                            'exception_action', COALESCE(ed.action, 0)
+                        ) ORDER BY pd.attribute_name
+                    ) FILTER (WHERE pd.attribute_name IS NOT NULL),
+                    '[]'::json
+                ) as differences_json
+            FROM attrs_data a
+            LEFT JOIN parsed_differences pd ON pd.attr_ouid = a.ouid
+            LEFT JOIN exceptions_data ed ON ed.entity_name = pd.attribute_name
+            GROUP BY a.ouid, a.name, a.description, a.title, a.ouiddatatype, 
+                     a.ouidsxclass, a.a_event, a.a_status_variance, a.a_priznak, 
+                     a.datatype_name, a.class_name, a.class_description
+            ORDER BY a.class_name, a.title, a.name
+        """
+        
+        print(f"[DEBUG] Выполняем ОПТИМИЗИРОВАННЫЙ запрос...")
+        start_time = time.time()
+        
+        # Выполняем ОДИН запрос для получения всех данных
+        all_attributes_optimized = self.db_manager.execute_query(optimized_query)
+        
+        query_time = time.time() - start_time
+        print(f"[DEBUG] ОПТИМИЗИРОВАННЫЙ запрос выполнен за {query_time:.2f} сек, получено {len(all_attributes_optimized)} атрибутов")
+        
+        # Обрабатываем результаты в памяти Python
+        classes_data = {}
+        total_statistics = {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
+        
+        for row in all_attributes_optimized:
+            attr_ouid = row[0]
+            attr_name = row[1]
+            class_name = row[10] or 'Без класса'
+            class_description = row[11] or ''
+            class_ouid = row[5]
             
-            # Пагинация по классам
-            per_page = int(per_page)
-            offset = (page - 1) * per_page
-            paginated_class_names = class_names[offset:offset + per_page]
-            
-            paginated_classes_data = {name: classes_data[name] for name in paginated_class_names}
-            
-            total_pages = math.ceil(total_classes / per_page) if total_classes > 0 else 0
-            
-            print(f"[DEBUG] Total classes: {total_classes}, paginated: {len(paginated_classes_data)}")
-            if analyze_exceptions:
-                print(f"[DEBUG] Statistics: {total_statistics}")
-                print(f"[DEBUG] Обработано атрибутов: {attr_counter}")
-                print(f"[DEBUG] Финальная статистика: игнорировать={total_statistics['ignore_count']}, обновить={total_statistics['update_count']}, без действия={total_statistics['no_action_count']}")
+            # Парсим JSON различий
+            import json
+            differences_json = row[12]
+            if isinstance(differences_json, str):
+                exception_actions = json.loads(differences_json)
             else:
-                print(f"[DEBUG] Быстрый режим: обработано {attr_counter} атрибутов без анализа исключений")
+                exception_actions = differences_json or []
             
-            return {
-                'classes': paginated_classes_data,
-                'total_count': total_attributes_count,
-                'total_classes': total_classes,
-                'total_pages': total_pages,
-                'current_page': page,
-                'per_page': per_page,
-                'has_prev': page > 1,
-                'has_next': page < total_pages,
-                'statistics': total_statistics,
-                'exception_action_filter': exception_action_filter,
-                'analyze_exceptions': analyze_exceptions
+            # Вычисляем общее действие
+            overall_action = self._get_overall_exception_action_from_json(exception_actions)
+            
+            # Инициализируем данные класса
+            if class_name not in classes_data:
+                classes_data[class_name] = {
+                    'class_name': class_name,
+                    'class_description': class_description,
+                    'class_ouid': class_ouid,
+                    'attributes': {'ignore_list': [], 'update_list': [], 'no_action_list': []},
+                    'statistics': {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
+                }
+            
+            # Получаем OUID атрибута назначения для admin_url
+            target_ouid = self._get_target_attribute_ouid(class_name, attr_name) if base_url and class_name else None
+            
+            # Извлекаем данные для отображения
+            source_value = ''
+            target_value = ''
+            property_name = ''
+            if exception_actions:
+                first_action = exception_actions[0]
+                source_value = first_action.get('source_value', '')
+                target_value = first_action.get('target_value', '')
+                property_names = [exc.get('property_name', '') for exc in exception_actions if exc.get('property_name')]
+                property_name = ', '.join(property_names) if property_names else ''
+            
+            attr_data = {
+                'ouid': attr_ouid,
+                'name': attr_name,
+                'description': row[2],
+                'title': row[3],
+                'ouiddatatype': row[4],
+                'ouidsxclass': row[5],
+                'a_event': row[6],
+                'a_status_variance': row[7],
+                'a_priznak': row[8],
+                'datatype_name': row[9],
+                'class_name': class_name,
+                'class_description': class_description,
+                'property_name': property_name,
+                'source': source_value,
+                'target': target_value,
+                'admin_url': self._build_admin_url(target_ouid or attr_ouid, 'SXAttr', base_url),
+                'source_admin_url': self._build_admin_url(attr_ouid, 'SXAttr', source_base_url),
+                'exception_actions': exception_actions,
+                'overall_action': overall_action,
+                'overall_action_name': self._get_action_name(overall_action)
             }
             
-        except Exception as e:
-            return {"error": f"Ошибка выполнения запроса: {e}"}
-        finally:
-            self.db_manager.disconnect()
+            # Группируем по действиям
+            if overall_action == 0:  # ИГНОРИРОВАТЬ
+                classes_data[class_name]['attributes']['ignore_list'].append(attr_data)
+                classes_data[class_name]['statistics']['ignore_count'] += 1
+                total_statistics['ignore_count'] += 1
+            elif overall_action == 2:  # ОБНОВИТЬ 
+                classes_data[class_name]['attributes']['update_list'].append(attr_data)
+                classes_data[class_name]['statistics']['update_count'] += 1
+                total_statistics['update_count'] += 1
+            else:  # БЕЗ ДЕЙСТВИЯ (overall_action == -1)
+                classes_data[class_name]['attributes']['no_action_list'].append(attr_data)
+                classes_data[class_name]['statistics']['no_action_count'] += 1
+                total_statistics['no_action_count'] += 1
+        
+        # Применяем фильтр по действиям исключений если задан
+        if exception_action_filter is not None:
+            filtered_classes_data = {}
+            for class_name, class_data in classes_data.items():
+                if exception_action_filter == 0 and class_data['statistics']['ignore_count'] > 0:
+                    filtered_classes_data[class_name] = class_data
+                elif exception_action_filter == 2 and class_data['statistics']['update_count'] > 0:
+                    filtered_classes_data[class_name] = class_data
+                elif exception_action_filter == -1 and class_data['statistics']['no_action_count'] > 0:
+                    filtered_classes_data[class_name] = class_data
+            classes_data = filtered_classes_data
+        
+        # Применяем пагинацию к классам
+        class_names = list(classes_data.keys())
+        total_classes = len(class_names)
+        total_attributes_count = len(all_attributes_optimized)
+        
+        # Пагинация по классам
+        per_page = int(per_page)
+        offset = (page - 1) * per_page
+        paginated_class_names = class_names[offset:offset + per_page]
+        
+        paginated_classes_data = {name: classes_data[name] for name in paginated_class_names}
+        
+        total_pages = math.ceil(total_classes / per_page) if total_classes > 0 else 0
+        
+        processing_time = time.time() - start_time
+        print(f"[DEBUG] ОПТИМИЗАЦИЯ: обработано {len(all_attributes_optimized)} атрибутов за {processing_time:.2f} сек")
+        print(f"[DEBUG] Статистика: игнорировать={total_statistics['ignore_count']}, обновить={total_statistics['update_count']}, без действия={total_statistics['no_action_count']}")
+        
+        return {
+            'classes': paginated_classes_data,
+            'total_count': total_attributes_count,
+            'total_classes': total_classes,
+            'total_pages': total_pages,
+            'current_page': page,
+            'per_page': per_page,
+            'has_prev': page > 1,
+            'has_next': page < total_pages,
+            'statistics': total_statistics,
+            'exception_action_filter': exception_action_filter,
+            'analyze_exceptions': True,
+            'optimization_info': {
+                'query_time': query_time,
+                'processing_time': processing_time,
+                'total_time': processing_time
+            }
+        }
+    
+    def _get_overall_exception_action_from_json(self, exception_actions: List[Dict[str, Any]]) -> int:
+        """Определение общего действия для атрибута на основе JSON исключений"""
+        
+        if not exception_actions:
+            return -1  # БЕЗ ДЕЙСТВИЯ если нет исключений
+        
+        # Если есть хотя бы одно действие "Обновить" (2), то общее действие - "Обновить"
+        for action_data in exception_actions:
+            if action_data.get('exception_action', 0) == 2:
+                return 2
+        
+        # Проверяем есть ли действия "Игнорировать" (0)
+        for action_data in exception_actions:
+            if action_data.get('exception_action', 0) == 0:
+                return 0
+                
+        # Если нет действий, то БЕЗ ДЕЙСТВИЯ
+        return -1
     
     def get_class_details(self, class_ouid: int, base_url: str = None, 
                          source_base_url: str = None,
