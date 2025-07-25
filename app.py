@@ -195,6 +195,80 @@ def attributes():
                              'show_update_actions': show_update_actions
                          })
 
+@app.route('/classes')
+def classes():
+    """Страница с анализом классов по исключениям"""
+    
+    # Получаем параметры из запроса
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    search = request.args.get('search', '')
+    status_variance = request.args.get('status_variance', type=int)
+    event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
+    base_url = request.args.get('base_url', '')
+    source_base_url = request.args.get('source_base_url', '')
+    exception_action_filter = request.args.get('exception_action_filter', type=int)
+    analyze_exceptions_param = request.args.get('analyze_exceptions', 'false').lower()
+    analyze_exceptions = analyze_exceptions_param == 'true'
+    
+    # Фильтры исключений применяются только в режиме анализа исключений
+    if analyze_exceptions:
+        source_target_filter = request.args.get('source_target_filter', '')
+        property_filter = request.args.getlist('property_filter')  # Множественный выбор свойств
+        
+        # Обработка чекбокса: если есть "true" в списке значений, то True, иначе False
+        show_update_actions_values = request.args.getlist('show_update_actions')
+        show_update_actions = 'true' in show_update_actions_values
+    else:
+        # В быстром режиме игнорируем фильтры исключений
+        source_target_filter = None
+        property_filter = None  
+        show_update_actions = True
+    
+    # Проверяем корректность значений
+    if page < 1:
+        page = 1
+    if per_page < 1 or per_page > 1000:
+        per_page = 20
+    
+    # Получаем данные с анализом исключений
+    result = data_service.get_classes_with_exceptions(
+        page=page,
+        per_page=per_page,
+        search=search if search else None,
+        status_variance=status_variance,
+        event=event,
+        a_priznak=a_priznak,
+        base_url=base_url if base_url else None,
+        source_base_url=source_base_url if source_base_url else None,
+        exception_action_filter=exception_action_filter,
+        analyze_exceptions=analyze_exceptions,
+        source_target_filter=source_target_filter,
+        property_filter=property_filter,
+        show_update_actions=show_update_actions
+    )
+    
+    # Получаем статистику
+    statistics = data_service.get_statistics()
+    
+    return render_template('classes.html', 
+                         result=result, 
+                         statistics=statistics,
+                         current_filters={
+                             'search': search,
+                             'status_variance': status_variance,
+                             'event': event,
+                             'a_priznak': a_priznak,
+                             'base_url': base_url,
+                             'source_base_url': source_base_url,
+                             'exception_action_filter': exception_action_filter,
+                             'analyze_exceptions': analyze_exceptions,
+                             'source_target_filter': source_target_filter,
+                             'property_filter': property_filter,
+                             'show_update_actions': show_update_actions
+                         })
+
 @app.route('/class/<int:class_ouid>')
 def class_detail(class_ouid):
     """Детальная страница класса"""
@@ -317,6 +391,52 @@ def api_attributes():
         event=event,
         a_priznak=a_priznak,
         base_url=base_url if base_url else None
+    )
+    
+    return jsonify(result)
+
+@app.route('/api/classes_with_exceptions')
+def api_classes_with_exceptions():
+    """API для получения списка классов с анализом исключений (для AJAX)"""
+    
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    search = request.args.get('search', '')
+    status_variance = request.args.get('status_variance', type=int)
+    event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
+    base_url = request.args.get('base_url', '')
+    source_base_url = request.args.get('source_base_url', '')
+    exception_action_filter = request.args.get('exception_action_filter', type=int)
+    analyze_exceptions_param = request.args.get('analyze_exceptions', 'false').lower()
+    analyze_exceptions = analyze_exceptions_param == 'true'
+    
+    # Фильтры исключений
+    source_target_filter = request.args.get('source_target_filter', '')
+    property_filter = request.args.getlist('property_filter')
+    show_update_actions_values = request.args.getlist('show_update_actions')
+    show_update_actions = 'true' in show_update_actions_values
+    
+    # Проверяем корректность значений
+    if page < 1:
+        page = 1
+    if per_page < 1 or per_page > 1000:
+        per_page = 20
+    
+    result = data_service.get_classes_with_exceptions(
+        page=page,
+        per_page=per_page,
+        search=search if search else None,
+        status_variance=status_variance,
+        event=event,
+        a_priznak=a_priznak,
+        base_url=base_url if base_url else None,
+        source_base_url=source_base_url if source_base_url else None,
+        exception_action_filter=exception_action_filter,
+        analyze_exceptions=analyze_exceptions,
+        source_target_filter=source_target_filter if source_target_filter else None,
+        property_filter=property_filter if property_filter else None,
+        show_update_actions=show_update_actions
     )
     
     return jsonify(result)

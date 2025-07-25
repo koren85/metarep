@@ -127,6 +127,412 @@ class DataService:
         finally:
             self.db_manager.disconnect()
     
+    def get_classes_with_exceptions(self, page: int = 1, per_page: int = 20, 
+                      search: str = None, status_variance: int = None, 
+                      event: int = None, a_priznak: int = None, base_url: str = None,
+                      source_base_url: str = None, exception_action_filter: int = None,
+                      analyze_exceptions: bool = False, source_target_filter: str = None,
+                      property_filter: List[str] = None, show_update_actions: bool = True) -> Dict[str, Any]:
+        """Получение списка классов с фильтрацией, пагинацией и анализом исключений (ОПТИМИЗИРОВАННАЯ ВЕРСИЯ)"""
+        
+        try:
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+            
+            print(f"[DEBUG] Оптимизированный get_classes_with_exceptions: analyze_exceptions={analyze_exceptions}")
+            
+            # ЭТАП 1: Быстрый запрос только классов БЕЗ анализа исключений
+            if not analyze_exceptions:
+                return self._get_classes_fast_mode(page, per_page, search, status_variance, event, a_priznak, base_url, source_base_url)
+            
+            # ЭТАП 2: Полный режим с анализом исключений - фильтры исключений применяются только здесь
+            return self._get_classes_with_exceptions_optimized(page, per_page, search, status_variance, event, a_priznak, base_url, source_base_url, exception_action_filter, source_target_filter, property_filter, show_update_actions)
+            
+        except Exception as e:
+            print(f"[ERROR] Ошибка в оптимизированном get_classes_with_exceptions: {e}")
+            return {"error": f"Ошибка выполнения запроса: {e}"}
+        finally:
+            self.db_manager.disconnect()
+    
+    def _get_classes_fast_mode(self, page: int, per_page: int, search: str, status_variance: int, 
+                                 event: int, a_priznak: int, base_url: str, source_base_url: str) -> Dict[str, Any]:
+        """Быстрый режим получения классов БЕЗ анализа исключений"""
+        
+        # Базовый запрос без анализа исключений
+        where_conditions = []
+        
+        if search:
+            search_escaped = search.replace("'", "''")
+            where_conditions.append(f"(c.name ILIKE '%{search_escaped}%' OR c.description ILIKE '%{search_escaped}%')")
+            
+        if status_variance is not None:
+            where_conditions.append(f"c.a_status_variance = {status_variance}")
+            
+        if event is not None:
+            where_conditions.append(f"c.a_event = {event}")
+            
+        if a_priznak is not None:
+            where_conditions.append(f"c.a_priznak = {a_priznak}")
+            
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        # Получаем общее количество
+        count_query = f"""
+            SELECT COUNT(*) 
+            FROM sxclass_source c
+            WHERE {where_clause}
+        """
+        
+        total_count = int(self.db_manager.execute_query(count_query)[0][0])
+        
+        # Основной запрос с пагинацией
+        offset = (page - 1) * per_page
+        main_query = f"""
+            SELECT c.ouid, c.name, c.description, c.a_status_variance, c.a_event, c.a_priznak,
+                   c.a_createdate, c.a_editor, c.parent_ouid, c.a_issystem
+            FROM sxclass_source c
+            WHERE {where_clause}
+            ORDER BY c.name
+            LIMIT {per_page} OFFSET {offset}
+        """
+        
+        classes = self.db_manager.execute_query(main_query)
+        
+        # Преобразуем в словари для быстрого режима
+        classes_list = []
+        for row in classes:
+            target_ouid = self._get_target_class_ouid(row[1]) if base_url else None
+            
+            classes_list.append({
+                'ouid': row[0],
+                'name': row[1],
+                'description': row[2],
+                'a_status_variance': row[3],
+                'a_event': row[4],
+                'a_priznak': row[5],
+                'a_createdate': row[6],
+                'a_editor': row[7],
+                'parent_ouid': row[8],
+                'a_issystem': row[9],
+                'admin_url': self._build_admin_url(target_ouid or row[0], 'SXClass', base_url),
+                'source_admin_url': self._build_admin_url(row[0], 'SXClass', source_base_url),
+                'overall_action': -1,  # Без действия
+                'overall_action_name': 'Без анализа исключений'
+            })
+        
+        total_pages = math.ceil(total_count / per_page) if total_count > 0 else 0
+        
+        print(f"[DEBUG] Быстрый режим классов: обработано {len(classes_list)} классов за {total_count} всего")
+        
+        return {
+            'classes': {'fast_mode': classes_list},
+            'total_count': total_count,
+            'total_pages': total_pages,
+            'current_page': page,
+            'per_page': per_page,
+            'has_prev': page > 1,
+            'has_next': page < total_pages,
+            'statistics': {'total_count': total_count},
+            'analyze_exceptions': False
+        }
+    
+    def _get_classes_with_exceptions_optimized(self, page: int, per_page: int, search: str, 
+                                                 status_variance: int, event: int, a_priznak: int,
+                                                 base_url: str, source_base_url: str, exception_action_filter: int, 
+                                                 source_target_filter: str, property_filter: List[str], 
+                                                 show_update_actions: bool) -> Dict[str, Any]:
+        """ОПТИМИЗИРОВАННАЯ версия с анализом исключений классов - ОДИН SQL запрос"""
+        
+        # Базовые условия фильтрации
+        where_conditions = []
+        
+        if search:
+            search_escaped = search.replace("'", "''")
+            where_conditions.append(f"(c.name ILIKE '%{search_escaped}%' OR c.description ILIKE '%{search_escaped}%')")
+            
+        if status_variance is not None:
+            where_conditions.append(f"c.a_status_variance = {status_variance}")
+            
+        if event is not None:
+            where_conditions.append(f"c.a_event = {event}")
+            
+        if a_priznak is not None:
+            where_conditions.append(f"c.a_priznak = {a_priznak}")
+            
+        where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+        
+        print(f"[DEBUG] ОПТИМИЗИРОВАННЫЙ запрос классов с where: {where_clause}")
+        
+        # ОДИН мощный SQL запрос - получаем ВСЕ классы И их различия сразу
+        optimized_query = f"""
+            WITH 
+            -- Получаем все классы
+            classes_data AS (
+                SELECT 
+                    c.ouid, c.name, c.description, c.a_status_variance, c.a_event, c.a_priznak, 
+                    c.a_log, c.a_createdate, c.a_editor, c.parent_ouid, c.a_issystem
+                FROM sxclass_source c
+                WHERE {where_clause}
+            ),
+            -- Парсим различия для ВСЕХ классов одним запросом
+            parsed_differences AS (
+                SELECT 
+                    c.ouid as class_ouid,
+                    c.name as class_name,
+                    c.description as class_description,
+                    attr_blocks.attribute_name,
+                    attr_blocks.source_value,
+                    attr_blocks.target_value
+                FROM classes_data c
+                CROSS JOIN LATERAL (
+                    SELECT 
+                        trim(split_part(attr_block, E'\\n', 1)) as attribute_name,
+                        COALESCE(
+                            trim(
+                                split_part(
+                                    substring(attr_block from 'source[[:space:]]*=[[:space:]]*(.*)'),
+                                    'target =',
+                                    1
+                                )
+                            ),
+                            ''
+                        ) as source_value,
+                        COALESCE(
+                            trim(regexp_replace(
+                                substring(attr_block from 'target[[:space:]]*=[[:space:]]*([^\\n]*(?:\\n[[:space:]]+[^\\n]*)*?)(?=\\n[^[:space:]]|$)'),
+                                '^[[:space:]]*', '', 'g'
+                            )),
+                            ''
+                        ) as target_value
+                    FROM unnest(
+                        regexp_split_to_array(
+                            c.a_log,
+                            E'(?=\\n[^[:space:]\\n])'
+                        )
+                    ) AS attr_block
+                    WHERE attr_block ~ 'source[[:space:]]*='
+                        AND trim(split_part(attr_block, E'\\n', 1)) != ''
+                        AND length(trim(attr_block)) > 0
+                ) attr_blocks
+                WHERE c.a_log IS NOT NULL AND c.a_log != ''
+            ),
+            -- Получаем исключения для классов
+            exceptions_data AS (
+                SELECT entity_type, entity_name, property_name, action
+                FROM __meta_statistic
+                WHERE entity_type = 'class'
+            )
+            -- Основной результат
+            SELECT 
+                c.ouid, c.name, c.description, c.a_status_variance, c.a_event, c.a_priznak, 
+                c.a_createdate, c.a_editor, c.parent_ouid, c.a_issystem,
+                -- Агрегируем все различия класса в JSON
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'property_name', pd.attribute_name,
+                            'source_value', pd.source_value,
+                            'target_value', pd.target_value,
+                            'exception_action', COALESCE(ed.action, 0)
+                        ) ORDER BY pd.attribute_name
+                    ) FILTER (WHERE pd.attribute_name IS NOT NULL),
+                    '[]'::json
+                ) as differences_json
+            FROM classes_data c
+            LEFT JOIN parsed_differences pd ON pd.class_ouid = c.ouid
+            LEFT JOIN exceptions_data ed ON ed.entity_name = pd.attribute_name
+            GROUP BY c.ouid, c.name, c.description, c.a_status_variance, c.a_event, c.a_priznak, 
+                     c.a_createdate, c.a_editor, c.parent_ouid, c.a_issystem
+            ORDER BY c.name
+        """
+        
+        print(f"[DEBUG] Выполняем ОПТИМИЗИРОВАННЫЙ запрос классов...")
+        start_time = time.time()
+        
+        # Выполняем ОДИН запрос для получения всех данных
+        all_classes_optimized = self.db_manager.execute_query(optimized_query)
+        
+        query_time = time.time() - start_time
+        print(f"[DEBUG] ОПТИМИЗИРОВАННЫЙ запрос классов выполнен за {query_time:.2f} сек, получено {len(all_classes_optimized)} классов")
+        
+        # Обрабатываем результаты в памяти Python
+        classes_by_action = {'ignore_list': [], 'update_list': [], 'no_action_list': []}
+        total_statistics = {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
+        
+        for row in all_classes_optimized:
+            class_ouid = row[0]
+            class_name = row[1]
+            class_description = row[2]
+            
+            # Парсим JSON различий
+            import json
+            differences_json = row[10]
+            if isinstance(differences_json, str):
+                original_exception_actions = json.loads(differences_json)
+            else:
+                original_exception_actions = differences_json or []
+            
+            # СНАЧАЛА вычисляем статистику на ИСХОДНЫХ данных (без фильтрации)
+            original_overall_action = self._get_overall_exception_action_from_json(original_exception_actions)
+            
+            # ПОТОМ применяем фильтры только для отображения
+            exception_actions = original_exception_actions.copy()
+            
+            # Применяем фильтр по направлению изменений Source/Target
+            if source_target_filter:
+                exception_actions = self._apply_source_target_filter(exception_actions, source_target_filter)
+            
+            # Применяем фильтр по выбранным свойствам
+            if property_filter:
+                exception_actions = self._apply_property_filter(exception_actions, property_filter)
+            
+            # Применяем фильтр по действиям (показывать ли "Обновить")
+            if not show_update_actions:
+                exception_actions = self._apply_action_filter(exception_actions, show_update_actions)
+            
+            # Для отображения используем отфильтрованное действие
+            overall_action = self._get_overall_exception_action_from_json(exception_actions)
+            
+            # Получаем OUID класса назначения для admin_url
+            target_ouid = self._get_target_class_ouid(class_name) if base_url else None
+            
+            # Извлекаем данные для отображения из ИСХОДНЫХ данных (до фильтрации)
+            source_value = ''
+            target_value = ''
+            original_property_name = ''
+            if original_exception_actions:
+                first_action = original_exception_actions[0]
+                source_value = first_action.get('source_value', '')
+                target_value = first_action.get('target_value', '')
+                property_names = [exc.get('property_name', '') for exc in original_exception_actions if exc.get('property_name')]
+                original_property_name = ', '.join(property_names) if property_names else ''
+            
+            # Для отображения используем отфильтрованные данные
+            filtered_property_names = [exc.get('property_name', '') for exc in exception_actions if exc.get('property_name')]
+            display_property_name = ', '.join(filtered_property_names) if filtered_property_names else original_property_name
+            
+            class_data = {
+                'ouid': class_ouid,
+                'name': class_name,
+                'description': class_description,
+                'a_status_variance': row[3],
+                'a_event': row[4],
+                'a_priznak': row[5],
+                'a_createdate': row[6],
+                'a_editor': row[7],
+                'parent_ouid': row[8],
+                'a_issystem': row[9],
+                'property_name': display_property_name,
+                'source': source_value,
+                'target': target_value,
+                'admin_url': self._build_admin_url(target_ouid or class_ouid, 'SXClass', base_url),
+                'source_admin_url': self._build_admin_url(class_ouid, 'SXClass', source_base_url),
+                'exception_actions': exception_actions,
+                'overall_action': overall_action,
+                'overall_action_name': self._get_action_name(overall_action)
+            }
+            
+            # Группируем по действиям используя ИСХОДНОЕ действие для статистики
+            if original_overall_action == 0:  # ИГНОРИРОВАТЬ
+                total_statistics['ignore_count'] += 1
+                # Добавляем в список если прошел фильтрацию ИЛИ изначально не было исключений
+                if exception_actions or not original_exception_actions:
+                    classes_by_action['ignore_list'].append(class_data)
+            elif original_overall_action == 2:  # ОБНОВИТЬ 
+                total_statistics['update_count'] += 1
+                # Добавляем в список если прошел фильтрацию ИЛИ изначально не было исключений
+                if exception_actions or not original_exception_actions:
+                    classes_by_action['update_list'].append(class_data)
+            else:  # БЕЗ ДЕЙСТВИЯ (original_overall_action == -1)
+                total_statistics['no_action_count'] += 1
+                # Классы без действия показываем всегда (не зависит от фильтрации исключений)
+                classes_by_action['no_action_list'].append(class_data)
+        
+        # Применяем фильтр по действиям исключений если задан
+        if exception_action_filter is not None:
+            filtered_classes_by_action = {'ignore_list': [], 'update_list': [], 'no_action_list': []}
+            if exception_action_filter == 0:
+                filtered_classes_by_action['ignore_list'] = classes_by_action['ignore_list']
+            elif exception_action_filter == 2:
+                filtered_classes_by_action['update_list'] = classes_by_action['update_list']
+            elif exception_action_filter == -1:
+                filtered_classes_by_action['no_action_list'] = classes_by_action['no_action_list']
+            classes_by_action = filtered_classes_by_action
+        
+        # Применяем пагинацию к общему списку классов
+        all_filtered_classes = classes_by_action['ignore_list'] + classes_by_action['update_list'] + classes_by_action['no_action_list']
+        total_classes_count = len(all_filtered_classes)
+        
+        # Пагинация
+        per_page = int(per_page)
+        offset = (page - 1) * per_page
+        paginated_classes = all_filtered_classes[offset:offset + per_page]
+        
+        # Разбиваем пагинированные классы обратно по типам действий
+        paginated_by_action = {'ignore_list': [], 'update_list': [], 'no_action_list': []}
+        for cls in paginated_classes:
+            action = cls['overall_action']
+            if action == 0:
+                paginated_by_action['ignore_list'].append(cls)
+            elif action == 2:
+                paginated_by_action['update_list'].append(cls)
+            else:
+                paginated_by_action['no_action_list'].append(cls)
+        
+        total_pages = math.ceil(total_classes_count / per_page) if total_classes_count > 0 else 0
+        
+        processing_time = time.time() - start_time
+        print(f"[DEBUG] ОПТИМИЗАЦИЯ классов: обработано {len(all_classes_optimized)} классов за {processing_time:.2f} сек")
+        print(f"[DEBUG] Статистика классов: игнорировать={total_statistics['ignore_count']}, обновить={total_statistics['update_count']}, без действия={total_statistics['no_action_count']}")
+        
+        # Получаем список всех доступных свойств для фильтра
+        available_properties = self._get_available_properties_classes(all_classes_optimized)
+        
+        return {
+            'classes_by_action': paginated_by_action,
+            'total_count': total_classes_count,
+            'total_pages': total_pages,
+            'current_page': page,
+            'per_page': per_page,
+            'has_prev': page > 1,
+            'has_next': page < total_pages,
+            'statistics': total_statistics,
+            'exception_action_filter': exception_action_filter,
+            'analyze_exceptions': True,
+            'optimization_info': {
+                'query_time': query_time,
+                'processing_time': processing_time,
+                'total_time': processing_time
+            },
+            'available_properties': available_properties
+        }
+    
+    def _get_available_properties_classes(self, classes_data: List) -> List[str]:
+        """Получение списка всех уникальных свойств классов для фильтра"""
+        
+        properties_set = set()
+        
+        for row in classes_data:
+            # row[10] - это differences_json для классов
+            differences_json = row[10] if len(row) > 10 else None
+            
+            if differences_json:
+                import json
+                if isinstance(differences_json, str):
+                    exception_actions = json.loads(differences_json)
+                else:
+                    exception_actions = differences_json or []
+                
+                for action in exception_actions:
+                    property_name = action.get('property_name', '')
+                    if property_name and property_name.strip():
+                        properties_set.add(property_name.strip())
+        
+        # Возвращаем отсортированный список
+        available_properties = sorted(list(properties_set))
+        print(f"[DEBUG] Найдено {len(available_properties)} уникальных свойств классов: {available_properties[:10]}...")
+        return available_properties
+    
     def get_groups(self, page: int = 1, per_page: int = 20, 
                    search: str = None, status_variance: int = None, 
                    event: int = None, a_priznak: int = None, base_url: str = None,
@@ -1780,17 +2186,18 @@ class DataService:
                         COALESCE(
                             trim(
                                 split_part(
-                                    substring(attr_block from 'target[[:space:]]*=[[:space:]]*(.*)'),
-                                    'source =',
+                                    substring(attr_block from 'source[[:space:]]*=[[:space:]]*(.*)'),
+                                    'target =',
                                     1
                                 )
                             ),
                             ''
                         ) as source_value,
                         COALESCE(
-                            trim(
-                                substring(attr_block from 'source[[:space:]]*=[[:space:]]*([^\\n]*)')
-                            ),
+                            trim(regexp_replace(
+                                substring(attr_block from 'target[[:space:]]*=[[:space:]]*([^\\n]*(?:\\n[[:space:]]+[^\\n]*)*?)(?=\\n[^[:space:]]|$)'),
+                                '^[[:space:]]*', '', 'g'
+                            )),
                             ''
                         ) as target_value
                     FROM source_data s
@@ -2312,18 +2719,17 @@ class DataService:
                         COALESCE(
                             trim(
                                 split_part(
-                                    substring(attr_block from 'source[[:space:]]*=[[:space:]]*(.*)'),
-                                    'target =',
+                                    substring(attr_block from 'target[[:space:]]*=[[:space:]]*(.*)'),
+                                    'source =',
                                     1
                                 )
                             ),
                             ''
                         ) as source_value,
                         COALESCE(
-                            trim(regexp_replace(
-                                substring(attr_block from 'target[[:space:]]*=[[:space:]]*([^\\n]*(?:\\n[[:space:]]+[^\\n]*)*?)(?=\\n[^[:space:]]|$)'),
-                                '^[[:space:]]*', '', 'g'
-                            )),
+                            trim(
+                                substring(attr_block from 'source[[:space:]]*=[[:space:]]*([^\\n]*)')
+                            ),
                             ''
                         ) as target_value
                     FROM source_data s
