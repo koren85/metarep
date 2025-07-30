@@ -193,14 +193,21 @@
         <!-- Заголовок -->
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1>Анализ атрибутов по исключениям</h1>
-            <div class="text-muted">
-                {% if result.error %}
-                    Ошибка загрузки данных
-                {% elif result.total_count > 0 %}
-                    Всего {{ result.total_count }} атрибутов
-                    {% if result.analyze_exceptions %} в {{ result.total_classes }} классах{% endif %}
-                {% else %}
-                    Атрибутов не найдено
+            <div class="d-flex align-items-center gap-3">
+                <div class="text-muted">
+                    {% if result.error %}
+                        Ошибка загрузки данных
+                    {% elif result.total_count > 0 %}
+                        Всего {{ result.total_count }} атрибутов
+                        {% if result.analyze_exceptions %} в {{ result.total_classes }} классах{% endif %}
+                    {% else %}
+                        Атрибутов не найдено
+                    {% endif %}
+                </div>
+                {% if not result.error and result.total_count > 0 %}
+                <button onclick="exportToExcel()" class="btn btn-success btn-sm">
+                    <i class="bi bi-file-earmark-excel"></i> Выгрузить в Excel
+                </button>
                 {% endif %}
             </div>
         </div>
@@ -814,5 +821,33 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 100);
     }
 });
+
+function exportToExcel() {
+    // Получаем текущие параметры URL
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Показываем индикатор загрузки
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Экспорт...';
+    btn.disabled = true;
+    
+    // Формируем URL для экспорта
+    const exportUrl = '/export/attributes.xlsx?' + urlParams.toString();
+    
+    // Создаем временную ссылку для скачивания
+    const link = document.createElement('a');
+    link.href = exportUrl;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Восстанавливаем кнопку через небольшую задержку
+    setTimeout(function() {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }, 2000);
+}
 </script>
 {% endblock %} 

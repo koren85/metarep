@@ -3,9 +3,12 @@ Flask приложение для анализа классов SiTex
 """
 import os
 from datetime import datetime
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file, make_response
 from data_service import DataService
 from config import config
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from io import BytesIO
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
@@ -675,6 +678,354 @@ def api_reload_exceptions():
             
     except Exception as e:
         return jsonify({"error": f"Ошибка перезагрузки исключений: {e}"}), 500
+
+# ===== Эндпоинты для экспорта в Excel =====
+
+@app.route('/export/classes.xlsx')
+def export_classes_xlsx():
+    """Экспорт классов в Excel с учетом фильтров"""
+    
+    # Получаем все те же параметры что и для обычного просмотра
+    search = request.args.get('search', '')
+    status_variance = request.args.get('status_variance', type=int)
+    event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
+    base_url = request.args.get('base_url', '')
+    source_base_url = request.args.get('source_base_url', '')
+    exception_action_filter = request.args.get('exception_action_filter', type=int)
+    analyze_exceptions_param = request.args.get('analyze_exceptions', 'false').lower()
+    analyze_exceptions = analyze_exceptions_param == 'true'
+    
+    # Фильтры исключений применяются только в режиме анализа исключений
+    if analyze_exceptions:
+        source_target_filter = request.args.get('source_target_filter', '')
+        property_filter = request.args.getlist('property_filter')
+        show_update_actions_values = request.args.getlist('show_update_actions')
+        show_update_actions = 'true' in show_update_actions_values
+    else:
+        source_target_filter = None
+        property_filter = None  
+        show_update_actions = True
+    
+    try:
+        # Получаем данные без пагинации (устанавливаем per_page = 100000)
+        result = data_service.get_classes_with_exceptions(
+            page=1,
+            per_page=100000,  # Получаем все записи
+            search=search if search else None,
+            status_variance=status_variance,
+            event=event,
+            a_priznak=a_priznak,
+            base_url=base_url if base_url else None,
+            source_base_url=source_base_url if source_base_url else None,
+            exception_action_filter=exception_action_filter,
+            analyze_exceptions=analyze_exceptions,
+            source_target_filter=source_target_filter,
+            property_filter=property_filter,
+            show_update_actions=show_update_actions
+        )
+        
+        if 'error' in result:
+            return jsonify({"error": result['error']}), 500
+        
+        # Создаем Excel файл
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Классы"
+        
+        # Определяем заголовки в зависимости от режима
+        if analyze_exceptions and result.get('classes_by_action'):
+            # Полный режим с анализом исключений
+            headers = ['ID', 'Имя', 'Описание', 'Свойство', 'Source', 'Target', 'Признак', 'Действие']
+            ws.append(headers)
+            
+            # Стилизуем заголовки
+            for col_num, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_num)
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Добавляем данные для обновления
+            if result['classes_by_action'].get('update_list'):
+                for class_item in result['classes_by_action']['update_list']:
+                    priznak_text = {1: 'Переносим миграцией', 2: 'Не переносим', 3: 'Переносим не миграцией'}.get(class_item.get('a_priznak'), 'Не определен')
+                    ws.append([
+                        class_item.get('ouid', ''),
+                        class_item.get('name', ''),
+                        class_item.get('description', ''),
+                        class_item.get('property_name', ''),
+                        class_item.get('source', ''),
+                        class_item.get('target', ''),
+                        priznak_text,
+                        'Обновить'
+                    ])
+            
+            # Добавляем данные для игнорирования
+            if result['classes_by_action'].get('ignore_list'):
+                for class_item in result['classes_by_action']['ignore_list']:
+                    priznak_text = {1: 'Переносим миграцией', 2: 'Не переносим', 3: 'Переносим не миграцией'}.get(class_item.get('a_priznak'), 'Не определен')
+                    ws.append([
+                        class_item.get('ouid', ''),
+                        class_item.get('name', ''),
+                        class_item.get('description', ''),
+                        class_item.get('property_name', ''),
+                        class_item.get('source', ''),
+                        class_item.get('target', ''),
+                        priznak_text,
+                        'Игнорировать'
+                    ])
+            
+            # Добавляем данные без действий
+            if result['classes_by_action'].get('no_action_list'):
+                for class_item in result['classes_by_action']['no_action_list']:
+                    priznak_text = {1: 'Переносим миграцией', 2: 'Не переносим', 3: 'Переносим не миграцией'}.get(class_item.get('a_priznak'), 'Не определен')
+                    ws.append([
+                        class_item.get('ouid', ''),
+                        class_item.get('name', ''),
+                        class_item.get('description', ''),
+                        class_item.get('property_name', ''),
+                        class_item.get('source', ''),
+                        class_item.get('target', ''),
+                        priznak_text,
+                        'Без действия'
+                    ])
+        
+        elif result.get('classes', {}).get('fast_mode'):
+            # Быстрый режим
+            headers = ['ID', 'Имя', 'Описание', 'Статус', 'Действие', 'Признак']
+            ws.append(headers)
+            
+            # Стилизуем заголовки
+            for col_num, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_num)
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Добавляем данные
+            for class_item in result['classes']['fast_mode']:
+                status_text = {0: 'Идентичны', 1: 'Отсутствует', 2: 'Отличаются'}.get(class_item.get('a_status_variance'), str(class_item.get('a_status_variance', '')))
+                action_text = {0: 'Игнорировать', 1: 'Добавить', 2: 'Обновить'}.get(class_item.get('a_event'), str(class_item.get('a_event', '')))
+                priznak_text = {1: 'Переносим миграцией', 2: 'Не переносим', 3: 'Переносим не миграцией'}.get(class_item.get('a_priznak'), 'Не определен')
+                
+                ws.append([
+                    class_item.get('ouid', ''),
+                    class_item.get('name', ''),
+                    class_item.get('description', ''),
+                    status_text,
+                    action_text,
+                    priznak_text
+                ])
+        else:
+            # Нет данных
+            ws.append(['Нет данных для экспорта'])
+        
+        # Автоширина колонок
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column_letter].width = adjusted_width
+        
+        # Сохраняем в BytesIO
+        excel_buffer = BytesIO()
+        wb.save(excel_buffer)
+        excel_buffer.seek(0)
+        
+        # Генерируем имя файла с датой
+        filename = f"classes_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        response = make_response(excel_buffer.getvalue())
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except Exception as e:
+        return jsonify({"error": f"Ошибка экспорта: {str(e)}"}), 500
+
+@app.route('/export/attributes.xlsx')
+def export_attributes_xlsx():
+    """Экспорт атрибутов в Excel с учетом фильтров"""
+    
+    # Получаем все те же параметры что и для обычного просмотра
+    search = request.args.get('search', '')
+    status_variance = request.args.get('status_variance', type=int)
+    event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
+    base_url = request.args.get('base_url', '')
+    source_base_url = request.args.get('source_base_url', '')
+    exception_action_filter = request.args.get('exception_action_filter', type=int)
+    analyze_exceptions_param = request.args.get('analyze_exceptions', 'false').lower()
+    analyze_exceptions = analyze_exceptions_param == 'true'
+    
+    # Фильтры исключений применяются только в режиме анализа исключений
+    if analyze_exceptions:
+        source_target_filter = request.args.get('source_target_filter', '')
+        property_filter = request.args.getlist('property_filter')
+        show_update_actions_values = request.args.getlist('show_update_actions')
+        show_update_actions = 'true' in show_update_actions_values
+    else:
+        source_target_filter = None
+        property_filter = None  
+        show_update_actions = True
+    
+    try:
+        # Получаем данные без пагинации (устанавливаем per_page = 100000)
+        result = data_service.get_attributes(
+            page=1,
+            per_page=100000,  # Получаем все записи
+            search=search if search else None,
+            status_variance=status_variance,
+            event=event,
+            a_priznak=a_priznak,
+            base_url=base_url if base_url else None,
+            source_base_url=source_base_url if source_base_url else None,
+            exception_action_filter=exception_action_filter,
+            analyze_exceptions=analyze_exceptions,
+            source_target_filter=source_target_filter,
+            property_filter=property_filter,
+            show_update_actions=show_update_actions
+        )
+        
+        if 'error' in result:
+            return jsonify({"error": result['error']}), 500
+        
+        # Создаем Excel файл
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Атрибуты"
+        
+        # Определяем заголовки в зависимости от режима
+        if analyze_exceptions and result.get('classes'):
+            # Полный режим с анализом исключений - группировка по классам
+            headers = ['Класс', 'ID', 'Имя', 'Заголовок', 'Тип', 'Свойство', 'Source', 'Target', 'Признак', 'Действие']
+            ws.append(headers)
+            
+            # Стилизуем заголовки
+            for col_num, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_num)
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Добавляем данные по классам
+            for class_name, class_data in result['classes'].items():
+                # Атрибуты для обновления
+                if class_data.get('attributes', {}).get('update_list'):
+                    for attr in class_data['attributes']['update_list']:
+                        priznak_text = {1: 'Переносим миграцией', 2: 'Не переносим', 3: 'Переносим не миграцией'}.get(attr.get('a_priznak'), 'Не определен')
+                        ws.append([
+                            class_data.get('class_name', ''),
+                            attr.get('ouid', ''),
+                            attr.get('name', ''),
+                            attr.get('title', ''),
+                            attr.get('datatype_name', ''),
+                            attr.get('property_name', ''),
+                            attr.get('source', ''),
+                            attr.get('target', ''),
+                            priznak_text,
+                            'Обновить'
+                        ])
+                
+                # Атрибуты для игнорирования
+                if class_data.get('attributes', {}).get('ignore_list'):
+                    for attr in class_data['attributes']['ignore_list']:
+                        priznak_text = {1: 'Переносим миграцией', 2: 'Не переносим', 3: 'Переносим не миграцией'}.get(attr.get('a_priznak'), 'Не определен')
+                        ws.append([
+                            class_data.get('class_name', ''),
+                            attr.get('ouid', ''),
+                            attr.get('name', ''),
+                            attr.get('title', ''),
+                            attr.get('datatype_name', ''),
+                            attr.get('property_name', ''),
+                            attr.get('source', ''),
+                            attr.get('target', ''),
+                            priznak_text,
+                            'Игнорировать'
+                        ])
+                
+                # Атрибуты без действий
+                if class_data.get('attributes', {}).get('no_action_list'):
+                    for attr in class_data['attributes']['no_action_list']:
+                        priznak_text = {1: 'Переносим миграцией', 2: 'Не переносим', 3: 'Переносим не миграцией'}.get(attr.get('a_priznak'), 'Не определен')
+                        ws.append([
+                            class_data.get('class_name', ''),
+                            attr.get('ouid', ''),
+                            attr.get('name', ''),
+                            attr.get('title', ''),
+                            attr.get('datatype_name', ''),
+                            attr.get('property_name', ''),
+                            attr.get('source', ''),
+                            attr.get('target', ''),
+                            priznak_text,
+                            'Без действия'
+                        ])
+        
+        elif result.get('attributes', {}).get('fast_mode'):
+            # Быстрый режим
+            headers = ['ID', 'Имя', 'Заголовок', 'Класс', 'Тип', 'Признак']
+            ws.append(headers)
+            
+            # Стилизуем заголовки
+            for col_num, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_num)
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Добавляем данные
+            for attr in result['attributes']['fast_mode']:
+                priznak_text = {1: 'Переносим миграцией', 2: 'Не переносим', 3: 'Переносим не миграцией'}.get(attr.get('a_priznak'), 'Не определен')
+                
+                ws.append([
+                    attr.get('ouid', ''),
+                    attr.get('name', ''),
+                    attr.get('title', ''),
+                    attr.get('class_name', ''),
+                    attr.get('datatype_name', ''),
+                    priznak_text
+                ])
+        else:
+            # Нет данных
+            ws.append(['Нет данных для экспорта'])
+        
+        # Автоширина колонок
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column_letter].width = adjusted_width
+        
+        # Сохраняем в BytesIO
+        excel_buffer = BytesIO()
+        wb.save(excel_buffer)
+        excel_buffer.seek(0)
+        
+        # Генерируем имя файла с датой
+        filename = f"attributes_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        response = make_response(excel_buffer.getvalue())
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        return response
+        
+    except Exception as e:
+        return jsonify({"error": f"Ошибка экспорта: {str(e)}"}), 500
 
 @app.errorhandler(404)
 def not_found(error):

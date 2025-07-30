@@ -690,7 +690,7 @@ class DataService:
             where_conditions.append(f"a.a_event = {event}")
             
         if a_priznak is not None:
-            where_conditions.append(f"a.a_priznak = {a_priznak}")
+            where_conditions.append(f"a.a_priznak = {a_priznak}"    )
             
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
