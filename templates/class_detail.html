@@ -213,10 +213,11 @@
                             <tr>
                                 <td class="field-label">Признак</td>
                                 <td>
-                                    <span class="badge {% if data.class.a_priznak == 1 %}bg-success{% elif data.class.a_priznak == 2 %}bg-danger{% elif data.class.a_priznak == 3 %}bg-warning{% else %}bg-secondary{% endif %}">
+                                                                            <span class="badge {% if data.class.a_priznak == 1 %}bg-success{% elif data.class.a_priznak == 2 %}bg-danger{% elif data.class.a_priznak == 3 %}bg-warning{% elif data.class.a_priznak == 4 %}bg-info{% else %}bg-secondary{% endif %}">
                                         {% if data.class.a_priznak == 1 %}1 - Переносим миграцией
                                         {% elif data.class.a_priznak == 2 %}2 - Не переносим
                                         {% elif data.class.a_priznak == 3 %}3 - Переносим не миграцией
+                                        {% elif data.class.a_priznak == 4 %}4 - Переносим пакетом с кодом
                                         {% else %}{{ data.class.a_priznak or 'Не указано' }}
                                         {% endif %}
                                     </span>
@@ -441,11 +442,12 @@
                                     </td>
 
                                     <td>
-                                        <span class="badge {% if attr.a_priznak == 1 %}bg-success{% elif attr.a_priznak == 2 %}bg-danger{% elif attr.a_priznak == 3 %}bg-warning{% else %}bg-secondary{% endif %}">
-                                            {% if attr.a_priznak == 1 %}1 - Переносим миграцией
-                                            {% elif attr.a_priznak == 2 %}2 - Не переносим
-                                            {% elif attr.a_priznak == 3 %}3 - Переносим не миграцией
-                                            {% else %}{{ attr.a_priznak or 'Не указано' }}
+                                                                                                <span class="badge {% if attr.a_priznak == 1 %}bg-success{% elif attr.a_priznak == 2 %}bg-danger{% elif attr.a_priznak == 3 %}bg-warning{% elif attr.a_priznak == 4 %}bg-info{% else %}bg-secondary{% endif %}">
+                                                        {% if attr.a_priznak == 1 %}1 - Переносим миграцией
+                                                        {% elif attr.a_priznak == 2 %}2 - Не переносим
+                                                        {% elif attr.a_priznak == 3 %}3 - Переносим не миграцией
+                                                        {% elif attr.a_priznak == 4 %}4 - Переносим пакетом с кодом
+                                                        {% else %}{{ attr.a_priznak or 'Не указано' }}
                                             {% endif %}
                                         </span>
                                     </td>

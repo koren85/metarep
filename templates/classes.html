@@ -16,6 +16,7 @@
                     <li><strong>Переносим миграцией:</strong> {{ statistics.classes_migrate or 0 }}</li>
                     <li><strong>Не переносим:</strong> {{ statistics.classes_skip or 0 }}</li>
                     <li><strong>Переносим не миграцией:</strong> {{ statistics.classes_manual or 0 }}</li>
+                    <li><strong>Переносим пакетом с кодом:</strong> {{ statistics.classes_priznak_4 or 0 }}</li>
                 </ul>
             </div>
         </div>
@@ -72,6 +73,7 @@
                             <option value="1" {% if current_filters.a_priznak == 1 %}selected{% endif %}>1 - Переносим миграцией</option>
                             <option value="2" {% if current_filters.a_priznak == 2 %}selected{% endif %}>2 - Не переносим</option>
                             <option value="3" {% if current_filters.a_priznak == 3 %}selected{% endif %}>3 - Переносим не миграцией</option>
+                            <option value="4" {% if current_filters.a_priznak == 4 %}selected{% endif %}>4 - Переносим пакетом с кодом</option>
                         </select>
                     </div>
                     
@@ -349,6 +351,8 @@
                                         <span class="badge bg-danger">Не переносим</span>
                                     {% elif class.a_priznak == 3 %}
                                         <span class="badge bg-warning">Переносим не миграцией</span>
+                                    {% elif class.a_priznak == 4 %}
+                                        <span class="badge bg-info">Переносим пакетом с кодом</span>
                                     {% else %}
                                         <span class="badge bg-secondary">Не определен</span>
                                     {% endif %}
@@ -415,6 +419,8 @@
                                         <span class="badge bg-danger">Не переносим</span>
                                     {% elif class.a_priznak == 3 %}
                                         <span class="badge bg-warning">Переносим не миграцией</span>
+                                    {% elif class.a_priznak == 4 %}
+                                        <span class="badge bg-info">Переносим пакетом с кодом</span>
                                     {% else %}
                                         <span class="badge bg-secondary">Не определен</span>
                                     {% endif %}
@@ -479,6 +485,8 @@
                                         <span class="badge bg-danger">Не переносим</span>
                                     {% elif class.a_priznak == 3 %}
                                         <span class="badge bg-warning">Переносим не миграцией</span>
+                                    {% elif class.a_priznak == 4 %}
+                                        <span class="badge bg-info">Переносим пакетом с кодом</span>
                                     {% else %}
                                         <span class="badge bg-secondary">Не определен</span>
                                     {% endif %}
@@ -543,6 +551,8 @@
                                         <span class="badge bg-danger">Не переносим</span>
                                     {% elif class.a_priznak == 3 %}
                                         <span class="badge bg-warning">Переносим не миграцией</span>
+                                    {% elif class.a_priznak == 4 %}
+                                        <span class="badge bg-info">Переносим пакетом с кодом</span>
                                     {% else %}
                                         <span class="badge bg-secondary">Не определен</span>
                                     {% endif %}

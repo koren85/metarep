@@ -169,11 +169,12 @@
                             </td>
 
                             <td>
-                                <span class="badge {% if class.a_priznak == 1 %}bg-success{% elif class.a_priznak == 2 %}bg-danger{% elif class.a_priznak == 3 %}bg-warning{% else %}bg-secondary{% endif %}">
-                                    {% if class.a_priznak == 1 %}1 - Переносим миграцией
-                                    {% elif class.a_priznak == 2 %}2 - Не переносим
-                                    {% elif class.a_priznak == 3 %}3 - Переносим не миграцией
-                                    {% else %}{{ class.a_priznak or 'Не указано' }}
+                                                                            <span class="badge {% if class.a_priznak == 1 %}bg-success{% elif class.a_priznak == 2 %}bg-danger{% elif class.a_priznak == 3 %}bg-warning{% elif class.a_priznak == 4 %}bg-info{% else %}bg-secondary{% endif %}">
+                                            {% if class.a_priznak == 1 %}1 - Переносим миграцией
+                                            {% elif class.a_priznak == 2 %}2 - Не переносим
+                                            {% elif class.a_priznak == 3 %}3 - Переносим не миграцией
+                                            {% elif class.a_priznak == 4 %}4 - Переносим пакетом с кодом
+                                            {% else %}{{ class.a_priznak or 'Не указано' }}
                                     {% endif %}
                                 </span>
                             </td>
