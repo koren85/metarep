@@ -210,6 +210,9 @@
                 <button onclick="exportToExcel()" class="btn btn-success btn-sm">
                     <i class="bi bi-file-earmark-excel"></i> Выгрузить в Excel
                 </button>
+                <button onclick="generateSqlScripts()" class="btn btn-primary btn-sm ms-2">
+                    <i class="bi bi-file-earmark-code"></i> Генерировать SQL скрипты
+                </button>
                 {% endif %}
             </div>
         </div>
@@ -859,5 +862,113 @@ function exportToExcel() {
         btn.disabled = false;
     }, 2000);
 }
+
+function generateSqlScripts() {
+    // Получаем текущие параметры URL
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Показываем индикатор загрузки
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Генерация...';
+    btn.disabled = true;
+    
+    // Формируем URL для API
+    const apiUrl = '/api/generate_sql_scripts?' + urlParams.toString();
+    
+    // Выполняем запрос к API
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Заполняем модальное окно
+                document.getElementById('sqlScriptsText').value = data.scripts;
+                document.getElementById('sqlScriptsCount').textContent = data.count;
+                
+                // Показываем модальное окно
+                const modal = new bootstrap.Modal(document.getElementById('sqlScriptsModal'));
+                modal.show();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка при генерации скриптов:', error);
+            alert('Ошибка при генерации SQL скриптов: ' + error.message);
+        })
+        .finally(() => {
+            // Восстанавливаем кнопку
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
+}
+
+function copySqlScripts() {
+    const textarea = document.getElementById('sqlScriptsText');
+    
+    // Выделяем весь текст
+    textarea.select();
+    textarea.setSelectionRange(0, 99999); // Для мобильных устройств
+    
+    // Копируем в буфер обмена
+    navigator.clipboard.writeText(textarea.value).then(function() {
+        // Показываем уведомление об успешном копировании
+        const btn = document.getElementById('copySqlBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check"></i> Скопировано!';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-success');
+        
+        // Возвращаем кнопку в исходное состояние через 2 секунды
+        setTimeout(function() {
+            btn.innerHTML = originalText;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+        }, 2000);
+    }).catch(function(err) {
+        console.error('Ошибка копирования: ', err);
+        alert('Ошибка копирования в буфер обмена');
+    });
+}
 </script>
+
+<!-- Модальное окно для SQL скриптов -->
+<div class="modal fade" id="sqlScriptsModal" tabindex="-1" aria-labelledby="sqlScriptsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sqlScriptsModalLabel">
+                    <i class="bi bi-file-earmark-code"></i> SQL скрипты для атрибутов
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Сгенерировано <span id="sqlScriptsCount">0</span> SQL скриптов</strong><br>
+                    Скрипты обновят поле A_EVENT=2 для всех отфильтрованных атрибутов.
+                </div>
+                
+                <div class="mb-3">
+                    <label for="sqlScriptsText" class="form-label">SQL скрипты:</label>
+                    <textarea class="form-control font-monospace" 
+                              id="sqlScriptsText" 
+                              rows="15" 
+                              readonly 
+                              style="font-size: 0.9em; background-color: #f8f9fa;"
+                              placeholder="SQL скрипты будут отображены здесь..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x"></i> Закрыть
+                </button>
+                <button type="button" class="btn btn-primary" id="copySqlBtn" onclick="copySqlScripts()">
+                    <i class="bi bi-clipboard"></i> Скопировать в буфер
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %} 

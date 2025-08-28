@@ -1027,6 +1027,107 @@ def export_attributes_xlsx():
     except Exception as e:
         return jsonify({"error": f"Ошибка экспорта: {str(e)}"}), 500
 
+@app.route('/api/generate_sql_scripts')
+def generate_sql_scripts():
+    """API для генерации SQL скриптов для отфильтрованных атрибутов"""
+    
+    # Получаем все те же параметры что и для обычного просмотра
+    search = request.args.get('search', '')
+    status_variance = request.args.get('status_variance', type=int)
+    event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
+    base_url = request.args.get('base_url', '')
+    source_base_url = request.args.get('source_base_url', '')
+    exception_action_filter = request.args.get('exception_action_filter', type=int)
+    analyze_exceptions_param = request.args.get('analyze_exceptions', 'false').lower()
+    analyze_exceptions = analyze_exceptions_param == 'true'
+    
+    # Фильтры исключений применяются только в режиме анализа исключений
+    if analyze_exceptions:
+        source_target_filter = request.args.get('source_target_filter', '')
+        property_filter = request.args.getlist('property_filter')
+        show_update_actions_values = request.args.getlist('show_update_actions')
+        show_update_actions = 'true' in show_update_actions_values
+    else:
+        source_target_filter = None
+        property_filter = None  
+        show_update_actions = True
+    
+    try:
+        # Получаем данные без пагинации (все записи)
+        result = data_service.get_attributes(
+            page=1,
+            per_page=100000,  # Получаем все записи
+            search=search if search else None,
+            status_variance=status_variance,
+            event=event,
+            a_priznak=a_priznak,
+            base_url=base_url if base_url else None,
+            source_base_url=source_base_url if source_base_url else None,
+            exception_action_filter=exception_action_filter,
+            analyze_exceptions=analyze_exceptions,
+            source_target_filter=source_target_filter,
+            property_filter=property_filter,
+            show_update_actions=show_update_actions
+        )
+        
+        if 'error' in result:
+            return jsonify({"error": result['error']}), 500
+        
+        # Генерируем SQL скрипты
+        sql_scripts = []
+        
+        # Определяем значение A_EVENT (согласно требованиям пользователя - всегда 2)
+        a_event_value = 2
+        
+        if analyze_exceptions and result.get('classes'):
+            # Полный режим с анализом исключений - группировка по классам
+            for class_name, class_data in result['classes'].items():
+                # Атрибуты для обновления
+                if class_data.get('attributes', {}).get('update_list'):
+                    for attr in class_data['attributes']['update_list']:
+                        attr_name = attr.get('name', '')
+                        if attr_name:
+                            script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE SXATTR_SOURCE.NAME='{attr_name}';"
+                            sql_scripts.append(script)
+                
+                # Атрибуты для игнорирования
+                if class_data.get('attributes', {}).get('ignore_list'):
+                    for attr in class_data['attributes']['ignore_list']:
+                        attr_name = attr.get('name', '')
+                        if attr_name:
+                            script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE SXATTR_SOURCE.NAME='{attr_name}';"
+                            sql_scripts.append(script)
+                
+                # Атрибуты без действий
+                if class_data.get('attributes', {}).get('no_action_list'):
+                    for attr in class_data['attributes']['no_action_list']:
+                        attr_name = attr.get('name', '')
+                        if attr_name:
+                            script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE SXATTR_SOURCE.NAME='{attr_name}';"
+                            sql_scripts.append(script)
+        
+        elif result.get('attributes', {}).get('fast_mode'):
+            # Быстрый режим - простая таблица атрибутов
+            for attr in result['attributes']['fast_mode']:
+                attr_name = attr.get('name', '')
+                if attr_name:
+                    script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE SXATTR_SOURCE.NAME='{attr_name}';"
+                    sql_scripts.append(script)
+        
+        # Формируем итоговый результат
+        all_scripts = '\n'.join(sql_scripts)
+        
+        return jsonify({
+            "success": True,
+            "scripts": all_scripts,
+            "count": len(sql_scripts),
+            "message": f"Сгенерировано {len(sql_scripts)} SQL скриптов"
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Ошибка генерации скриптов: {str(e)}"}), 500
+
 @app.errorhandler(404)
 def not_found(error):
     return render_template('error.html', error="Страница не найдена"), 404
