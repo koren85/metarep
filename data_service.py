@@ -690,7 +690,7 @@ class DataService:
             where_conditions.append(f"a.a_event = {event}")
             
         if a_priznak is not None:
-            where_conditions.append(f"a.a_priznak = {a_priznak}"    )
+            where_conditions.append(f"a.a_priznak = {a_priznak}")
             
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
@@ -789,7 +789,24 @@ class DataService:
         
         print(f"[DEBUG] ОПТИМИЗИРОВАННЫЙ запрос с where: {where_clause}")
         
-        # ОДИН мощный SQL запрос - получаем ВСЕ атрибуты И их различия сразу
+        # СНАЧАЛА получаем общее количество записей для пагинации
+        count_query = f"""
+            SELECT COUNT(*)
+            FROM sxattr_source a
+            LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
+            LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
+            WHERE {where_clause}
+        """
+        
+        total_count_result = self.db_manager.execute_query(count_query)
+        total_count = int(total_count_result[0][0]) if total_count_result else 0
+        
+        print(f"[DEBUG] Общее количество атрибутов: {total_count}")
+        
+        # Вычисляем offset для пагинации
+        offset = (page - 1) * per_page
+        
+        # ОПТИМИЗИРОВАННЫЙ запрос С ПАГИНАЦИЕЙ - получаем только нужные атрибуты И их различия
         optimized_query = f"""
             WITH 
             -- Получаем все атрибуты
@@ -876,6 +893,7 @@ class DataService:
                      a.ouidsxclass, a.a_event, a.a_status_variance, a.a_priznak, 
                      a.datatype_name, a.class_name, a.class_description
             ORDER BY a.class_name, a.title, a.name
+            LIMIT {per_page} OFFSET {offset}
         """
         
         print(f"[DEBUG] Выполняем ОПТИМИЗИРОВАННЫЙ запрос...")
@@ -1023,19 +1041,11 @@ class DataService:
         classes_data = non_empty_classes_data
         print(f"[DEBUG] После удаления пустых классов: {len(classes_data)} классов")
         
-        # Применяем пагинацию к классам
-        class_names = list(classes_data.keys())
-        total_classes = len(class_names)
-        total_attributes_count = len(all_attributes_optimized)
+        # Статистика для текущей страницы
+        current_page_attributes_count = len(all_attributes_optimized)
         
-        # Пагинация по классам
-        per_page = int(per_page)
-        offset = (page - 1) * per_page
-        paginated_class_names = class_names[offset:offset + per_page]
-        
-        paginated_classes_data = {name: classes_data[name] for name in paginated_class_names}
-        
-        total_pages = math.ceil(total_classes / per_page) if total_classes > 0 else 0
+        # Вычисляем общее количество страниц на основе общего количества атрибутов
+        total_pages = math.ceil(total_count / per_page) if total_count > 0 else 0
         
         processing_time = time.time() - start_time
         print(f"[DEBUG] ОПТИМИЗАЦИЯ: обработано {len(all_attributes_optimized)} атрибутов за {processing_time:.2f} сек")
@@ -1045,9 +1055,9 @@ class DataService:
         available_properties = self._get_available_properties(all_attributes_optimized)
         
         return {
-            'classes': paginated_classes_data,
-            'total_count': total_attributes_count,
-            'total_classes': total_classes,
+            'classes': classes_data,
+            'total_count': total_count,
+            'total_classes': len(classes_data),
             'total_pages': total_pages,
             'current_page': page,
             'per_page': per_page,
