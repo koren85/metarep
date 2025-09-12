@@ -1086,33 +1086,33 @@ def generate_sql_scripts():
                 # Атрибуты для обновления
                 if class_data.get('attributes', {}).get('update_list'):
                     for attr in class_data['attributes']['update_list']:
-                        attr_name = attr.get('name', '')
-                        if attr_name:
-                            script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE SXATTR_SOURCE.NAME='{attr_name}';"
+                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                        if where_conditions:
+                            script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                             sql_scripts.append(script)
                 
                 # Атрибуты для игнорирования
                 if class_data.get('attributes', {}).get('ignore_list'):
                     for attr in class_data['attributes']['ignore_list']:
-                        attr_name = attr.get('name', '')
-                        if attr_name:
-                            script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE SXATTR_SOURCE.NAME='{attr_name}';"
+                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                        if where_conditions:
+                            script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                             sql_scripts.append(script)
                 
                 # Атрибуты без действий
                 if class_data.get('attributes', {}).get('no_action_list'):
                     for attr in class_data['attributes']['no_action_list']:
-                        attr_name = attr.get('name', '')
-                        if attr_name:
-                            script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE SXATTR_SOURCE.NAME='{attr_name}';"
+                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                        if where_conditions:
+                            script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                             sql_scripts.append(script)
         
         elif result.get('attributes', {}).get('fast_mode'):
             # Быстрый режим - простая таблица атрибутов
             for attr in result['attributes']['fast_mode']:
-                attr_name = attr.get('name', '')
-                if attr_name:
-                    script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE SXATTR_SOURCE.NAME='{attr_name}';"
+                where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                if where_conditions:
+                    script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                     sql_scripts.append(script)
         
         # Формируем итоговый результат
@@ -1127,6 +1127,32 @@ def generate_sql_scripts():
         
     except Exception as e:
         return jsonify({"error": f"Ошибка генерации скриптов: {str(e)}"}), 500
+
+def _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance):
+    """Построение WHERE условий для UPDATE скриптов с учетом всех фильтров"""
+    conditions = []
+    
+    # Обязательное условие по имени атрибута
+    attr_name = attr.get('name', '')
+    if attr_name:
+        conditions.append(f"NAME='{attr_name}'")
+    
+    # Добавляем фильтры если они были применены
+    if a_priznak is not None:
+        conditions.append(f"A_PRIZNAK={a_priznak}")
+    
+    if event is not None:
+        conditions.append(f"A_EVENT={event}")
+        
+    if status_variance is not None:
+        conditions.append(f"A_STATUS_VARIANCE={status_variance}")
+    
+    # Если есть связь с классом, добавляем условие по классу
+    ouidsxclass = attr.get('ouidsxclass')
+    if ouidsxclass:
+        conditions.append(f"OUIDSXCLASS={ouidsxclass}")
+    
+    return " AND ".join(conditions)
 
 @app.errorhandler(404)
 def not_found(error):
