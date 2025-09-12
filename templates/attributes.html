@@ -210,9 +210,14 @@
                 <button onclick="exportToExcel()" class="btn btn-success btn-sm">
                     <i class="bi bi-file-earmark-excel"></i> Выгрузить в Excel
                 </button>
-                <button onclick="generateSqlScripts()" class="btn btn-primary btn-sm ms-2">
-                    <i class="bi bi-file-earmark-code"></i> Генерировать SQL скрипты
-                </button>
+                <div class="btn-group ms-2" role="group">
+                    <button onclick="generateSqlScriptsPage()" class="btn btn-primary btn-sm">
+                        <i class="bi bi-file-earmark-code"></i> Скрипты для страницы
+                    </button>
+                    <button onclick="generateSqlScripts()" class="btn btn-warning btn-sm">
+                        <i class="bi bi-file-earmark-code-fill"></i> Скрипты для всех
+                    </button>
+                </div>
                 {% endif %}
             </div>
         </div>
@@ -873,7 +878,7 @@ function generateSqlScripts() {
     btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Генерация...';
     btn.disabled = true;
     
-    // Формируем URL для API
+    // Формируем URL для API (все записи)
     const apiUrl = '/api/generate_sql_scripts?' + urlParams.toString();
     
     // Выполняем запрос к API
@@ -884,6 +889,48 @@ function generateSqlScripts() {
                 // Заполняем модальное окно
                 document.getElementById('sqlScriptsText').value = data.scripts;
                 document.getElementById('sqlScriptsCount').textContent = data.count;
+                document.getElementById('sqlScriptsMessage').textContent = 'Скрипты обновят поле A_EVENT=2 для ВСЕХ отфильтрованных атрибутов.';
+                
+                // Показываем модальное окно
+                const modal = new bootstrap.Modal(document.getElementById('sqlScriptsModal'));
+                modal.show();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка при генерации скриптов:', error);
+            alert('Ошибка при генерации SQL скриптов: ' + error.message);
+        })
+        .finally(() => {
+            // Восстанавливаем кнопку
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
+}
+
+function generateSqlScriptsPage() {
+    // Получаем текущие параметры URL
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Показываем индикатор загрузки
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Генерация...';
+    btn.disabled = true;
+    
+    // Формируем URL для API (только текущая страница)
+    const apiUrl = '/api/generate_sql_scripts_page?' + urlParams.toString();
+    
+    // Выполняем запрос к API
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Заполняем модальное окно
+                document.getElementById('sqlScriptsText').value = data.scripts;
+                document.getElementById('sqlScriptsCount').textContent = data.count;
+                document.getElementById('sqlScriptsMessage').textContent = 'Скрипты обновят поле A_EVENT=2 для атрибутов ТОЛЬКО на текущей странице.';
                 
                 // Показываем модальное окно
                 const modal = new bootstrap.Modal(document.getElementById('sqlScriptsModal'));
@@ -946,7 +993,7 @@ function copySqlScripts() {
                 <div class="alert alert-info">
                     <i class="bi bi-info-circle"></i>
                     <strong>Сгенерировано <span id="sqlScriptsCount">0</span> SQL скриптов</strong><br>
-                    Скрипты обновят поле A_EVENT=2 для всех отфильтрованных атрибутов.
+                    <span id="sqlScriptsMessage">Скрипты обновят поле A_EVENT=2 для отфильтрованных атрибутов.</span>
                 </div>
                 
                 <div class="mb-3">
