@@ -459,18 +459,6 @@ class DataService:
                 filtered_classes_by_action['no_action_list'] = classes_by_action['no_action_list']
             classes_by_action = filtered_classes_by_action
         
-        # ПЕРЕСЧИТЫВАЕМ СТАТИСТИКУ после применения всех фильтров
-        recalculated_statistics = {
-            'ignore_count': len(classes_by_action['ignore_list']),
-            'update_count': len(classes_by_action['update_list']),
-            'no_action_count': len(classes_by_action['no_action_list'])
-        }
-        
-        print(f"[DEBUG] ПЕРЕСЧИТАННАЯ статистика классов: игнорировать={recalculated_statistics['ignore_count']}, обновить={recalculated_statistics['update_count']}, без действия={recalculated_statistics['no_action_count']}")
-        
-        # Заменяем статистику на пересчитанную
-        total_statistics = recalculated_statistics
-        
         # Применяем пагинацию к общему списку классов
         all_filtered_classes = classes_by_action['ignore_list'] + classes_by_action['update_list'] + classes_by_action['no_action_list']
         total_classes_count = len(all_filtered_classes)
@@ -702,7 +690,7 @@ class DataService:
             where_conditions.append(f"a.a_event = {event}")
             
         if a_priznak is not None:
-            where_conditions.append(f"a.a_priznak = {a_priznak}")
+            where_conditions.append(f"a.a_priznak = {a_priznak}"    )
             
         where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
         
@@ -801,147 +789,7 @@ class DataService:
         
         print(f"[DEBUG] ОПТИМИЗИРОВАННЫЙ запрос с where: {where_clause}")
         
-        # СНАЧАЛА получаем общее количество записей для пагинации
-        count_query = f"""
-            SELECT COUNT(*)
-            FROM sxattr_source a
-            LEFT JOIN sxdatatype d ON d.ouid = a.ouiddatatype
-            LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
-            WHERE {where_clause}
-        """
-        
-        total_count_result = self.db_manager.execute_query(count_query)
-        total_count = int(total_count_result[0][0]) if total_count_result else 0
-        
-        print(f"[DEBUG] Общее количество атрибутов: {total_count}")
-        
-        # РАЗДЕЛЯЕМ НА ДВА ЭТАПА:
-        # 1. Сначала получаем статистику для ВСЕХ записей (без пагинации)
-        # 2. Потом получаем данные только для текущей страницы (с пагинацией)
-        
-        # ЭТАП 1: Запрос для статистики ВСЕХ записей
-        statistics_query = f"""
-            WITH 
-            -- Получаем все атрибуты для статистики
-            attrs_data AS (
-                SELECT 
-                    a.ouid, a.name, a.a_log,
-                    c.name as class_name
-                FROM sxattr_source a
-                LEFT JOIN sxclass_source c ON c.ouid = a.ouidsxclass
-                WHERE {where_clause}
-            ),
-            -- Парсим различия только для получения свойств и статистики
-            parsed_differences AS (
-                SELECT 
-                    a.ouid as attr_ouid,
-                    a.name as attr_name,
-                    a.class_name,
-                    attr_blocks.attribute_name
-                FROM attrs_data a
-                CROSS JOIN LATERAL (
-                    SELECT 
-                        trim(split_part(attr_block, E'\\n', 1)) as attribute_name
-                    FROM unnest(
-                        regexp_split_to_array(
-                            a.a_log,
-                            E'(?=\\n[^[:space:]\\n])'
-                        )
-                    ) AS attr_block
-                    WHERE attr_block ~ 'source[[:space:]]*='
-                        AND trim(split_part(attr_block, E'\\n', 1)) != ''
-                        AND length(trim(attr_block)) > 0
-                ) attr_blocks
-                WHERE a.a_log IS NOT NULL AND a.a_log != ''
-            ),
-            -- Получаем исключения
-            exceptions_data AS (
-                SELECT entity_name, property_name, action
-                FROM __meta_statistic
-                WHERE entity_type = 'attribute'
-            )
-            -- Результат только для статистики
-            SELECT 
-                a.ouid, a.name, a.class_name,
-                -- Агрегируем различия в JSON
-                COALESCE(
-                    json_agg(
-                        json_build_object(
-                            'property_name', pd.attribute_name,
-                            'exception_action', COALESCE(ed.action, 0)
-                        ) ORDER BY pd.attribute_name
-                    ) FILTER (WHERE pd.attribute_name IS NOT NULL),
-                    '[]'::json
-                ) as differences_json
-            FROM attrs_data a
-            LEFT JOIN parsed_differences pd ON pd.attr_ouid = a.ouid
-            LEFT JOIN exceptions_data ed ON ed.entity_name = pd.attribute_name
-            GROUP BY a.ouid, a.name, a.class_name
-        """
-        
-        print(f"[DEBUG] Выполняем запрос для статистики ВСЕХ записей...")
-        statistics_start = time.time()
-        
-        # Получаем все данные для статистики
-        all_attributes_for_stats = self.db_manager.execute_query(statistics_query)
-        
-        statistics_time = time.time() - statistics_start
-        print(f"[DEBUG] Получено {len(all_attributes_for_stats)} атрибутов для статистики за {statistics_time:.2f} сек")
-        
-        # ОБРАБАТЫВАЕМ СТАТИСТИКУ для всех записей
-        total_statistics = {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
-        all_available_properties = set()
-        
-        for row in all_attributes_for_stats:
-            differences_json = row[3] if row[3] and row[3] != '[]' else []
-            
-            # Преобразуем JSON в список если нужно
-            if isinstance(differences_json, str):
-                import json
-                differences_json = json.loads(differences_json)
-            
-            # Получаем исходные различия для статистики
-            original_exception_actions = differences_json if isinstance(differences_json, list) else []
-            
-            # Применяем фильтры к копии для подсчета статистики
-            exception_actions = original_exception_actions.copy()
-            
-            # Применяем фильтр по направлению изменений Source/Target
-            if source_target_filter:
-                exception_actions = self._apply_source_target_filter(exception_actions, source_target_filter)
-            
-            # Применяем фильтр по выбранным свойствам
-            if property_filter:
-                exception_actions = self._apply_property_filter(exception_actions, property_filter)
-            
-            # Применяем фильтр по действиям
-            if not show_update_actions:
-                exception_actions = self._apply_action_filter(exception_actions, show_update_actions)
-            
-            # Получаем общее действие для статистики
-            overall_action = self._get_overall_exception_action_from_json(exception_actions)
-            
-            # Обновляем статистику
-            if overall_action == 0:  # ИГНОРИРОВАТЬ
-                total_statistics['ignore_count'] += 1
-            elif overall_action == 2:  # ОБНОВИТЬ
-                total_statistics['update_count'] += 1
-            else:  # БЕЗ ДЕЙСТВИЯ
-                total_statistics['no_action_count'] += 1
-            
-            # Собираем все доступные свойства из ИСХОДНЫХ различий (до фильтрации)
-            for action in original_exception_actions:
-                prop_name = action.get('property_name', '')
-                if prop_name:
-                    all_available_properties.add(prop_name)
-        
-        print(f"[DEBUG] ФИНАЛЬНАЯ статистика: игнорировать={total_statistics['ignore_count']}, обновить={total_statistics['update_count']}, без действия={total_statistics['no_action_count']}")
-        print(f"[DEBUG] Найдено {len(all_available_properties)} уникальных свойств")
-        
-        # Вычисляем offset для пагинации
-        offset = (page - 1) * per_page
-        
-        # ЭТАП 2: Полный запрос С ПАГИНАЦИЕЙ только для отображения
+        # ОДИН мощный SQL запрос - получаем ВСЕ атрибуты И их различия сразу
         optimized_query = f"""
             WITH 
             -- Получаем все атрибуты
@@ -1028,22 +876,22 @@ class DataService:
                      a.ouidsxclass, a.a_event, a.a_status_variance, a.a_priznak, 
                      a.datatype_name, a.class_name, a.class_description
             ORDER BY a.class_name, a.title, a.name
-            LIMIT {per_page} OFFSET {offset}
         """
         
-        print(f"[DEBUG] Выполняем запрос для отображения (страница {page})...")
-        display_start = time.time()
+        print(f"[DEBUG] Выполняем ОПТИМИЗИРОВАННЫЙ запрос...")
+        start_time = time.time()
         
-        # Выполняем запрос для получения данных текущей страницы
-        page_attributes = self.db_manager.execute_query(optimized_query)
+        # Выполняем ОДИН запрос для получения всех данных
+        all_attributes_optimized = self.db_manager.execute_query(optimized_query)
         
-        display_time = time.time() - display_start
-        print(f"[DEBUG] Запрос для отображения выполнен за {display_time:.2f} сек, получено {len(page_attributes)} атрибутов")
+        query_time = time.time() - start_time
+        print(f"[DEBUG] ОПТИМИЗИРОВАННЫЙ запрос выполнен за {query_time:.2f} сек, получено {len(all_attributes_optimized)} атрибутов")
         
-        # Обрабатываем результаты ТОЛЬКО для текущей страницы
+        # Обрабатываем результаты в памяти Python
         classes_data = {}
+        total_statistics = {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
         
-        for row in page_attributes:
+        for row in all_attributes_optimized:
             attr_ouid = row[0]
             attr_name = row[1]
             class_name = row[10] or 'Без класса'
@@ -1130,16 +978,22 @@ class DataService:
                 'overall_action_name': self._get_action_name(overall_action)
             }
             
-            # Группируем по действиям для отображения на текущей странице
+            # Группируем по действиям используя ИСХОДНОЕ действие для статистики
             if original_overall_action == 0:  # ИГНОРИРОВАТЬ
+                classes_data[class_name]['statistics']['ignore_count'] += 1
+                total_statistics['ignore_count'] += 1
                 # Добавляем в список если прошел фильтрацию ИЛИ изначально не было исключений
                 if exception_actions or not original_exception_actions:
                     classes_data[class_name]['attributes']['ignore_list'].append(attr_data)
             elif original_overall_action == 2:  # ОБНОВИТЬ 
+                classes_data[class_name]['statistics']['update_count'] += 1
+                total_statistics['update_count'] += 1
                 # Добавляем в список если прошел фильтрацию ИЛИ изначально не было исключений
                 if exception_actions or not original_exception_actions:
                     classes_data[class_name]['attributes']['update_list'].append(attr_data)
             else:  # БЕЗ ДЕЙСТВИЯ (original_overall_action == -1)
+                classes_data[class_name]['statistics']['no_action_count'] += 1
+                total_statistics['no_action_count'] += 1
                 # Атрибуты без действия показываем всегда (не зависит от фильтрации исключений)
                 classes_data[class_name]['attributes']['no_action_list'].append(attr_data)
         
@@ -1169,44 +1023,43 @@ class DataService:
         classes_data = non_empty_classes_data
         print(f"[DEBUG] После удаления пустых классов: {len(classes_data)} классов")
         
-        # Статистика классов на текущей странице (только для отображения)
-        for class_name, class_data in classes_data.items():
-            ignore_count = len(class_data['attributes']['ignore_list'])
-            update_count = len(class_data['attributes']['update_list'])
-            no_action_count = len(class_data['attributes']['no_action_list'])
-            
-            # Обновляем статистику класса для отображения
-            class_data['statistics']['ignore_count'] = ignore_count
-            class_data['statistics']['update_count'] = update_count
-            class_data['statistics']['no_action_count'] = no_action_count
+        # Применяем пагинацию к классам
+        class_names = list(classes_data.keys())
+        total_classes = len(class_names)
+        total_attributes_count = len(all_attributes_optimized)
         
-        # Вычисляем общее количество страниц на основе общего количества атрибутов
-        total_pages = math.ceil(total_count / per_page) if total_count > 0 else 0
+        # Пагинация по классам
+        per_page = int(per_page)
+        offset = (page - 1) * per_page
+        paginated_class_names = class_names[offset:offset + per_page]
         
-        total_processing_time = time.time() - statistics_start
-        print(f"[DEBUG] ОБЩЕЕ время обработки: {total_processing_time:.2f} сек (статистика: {statistics_time:.2f}с + отображение: {display_time:.2f}с)")
-        print(f"[DEBUG] Обработано {len(page_attributes)} атрибутов для отображения")
-        print(f"[DEBUG] ИСПОЛЬЗУЕМ готовую статистику: игнорировать={total_statistics['ignore_count']}, обновить={total_statistics['update_count']}, без действия={total_statistics['no_action_count']}")
+        paginated_classes_data = {name: classes_data[name] for name in paginated_class_names}
         
-        # Используем готовый список свойств из этапа статистики
-        available_properties = sorted(list(all_available_properties))
+        total_pages = math.ceil(total_classes / per_page) if total_classes > 0 else 0
+        
+        processing_time = time.time() - start_time
+        print(f"[DEBUG] ОПТИМИЗАЦИЯ: обработано {len(all_attributes_optimized)} атрибутов за {processing_time:.2f} сек")
+        print(f"[DEBUG] Статистика: игнорировать={total_statistics['ignore_count']}, обновить={total_statistics['update_count']}, без действия={total_statistics['no_action_count']}")
+        
+        # Получаем список всех доступных свойств для фильтра
+        available_properties = self._get_available_properties(all_attributes_optimized)
         
         return {
-            'classes': classes_data,  # Классы с атрибутами текущей страницы
-            'total_count': sum(total_statistics.values()),  # Общее количество АТРИБУТОВ из статистики всех записей
-            'total_classes': len(classes_data),  # Количество классов на текущей странице
+            'classes': paginated_classes_data,
+            'total_count': total_attributes_count,
+            'total_classes': total_classes,
             'total_pages': total_pages,
             'current_page': page,
             'per_page': per_page,
             'has_prev': page > 1,
             'has_next': page < total_pages,
-            'statistics': total_statistics,  # СТАТИСТИКА ДЛЯ ВСЕХ ЗАПИСЕЙ (не только страницы)
+            'statistics': total_statistics,
             'exception_action_filter': exception_action_filter,
             'analyze_exceptions': True,
             'optimization_info': {
-                'statistics_time': statistics_time,
-                'display_time': display_time,
-                'total_time': total_processing_time
+                'query_time': query_time,
+                'processing_time': processing_time,
+                'total_time': processing_time
             },
             'available_properties': available_properties
         }

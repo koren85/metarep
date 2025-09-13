@@ -228,7 +228,7 @@
             <i class="bi bi-lightning-fill"></i>
             <strong>Оптимизированная загрузка:</strong> 
             обработано {{ result.total_count }} атрибутов за {{ "%.2f"|format(result.optimization_info.total_time) }} сек
-            (статистика: {{ "%.2f"|format(result.optimization_info.statistics_time) }}с + отображение: {{ "%.2f"|format(result.optimization_info.display_time) }}с)
+            (SQL: {{ "%.2f"|format(result.optimization_info.query_time) }}с)
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
         {% endif %}
