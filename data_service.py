@@ -15,7 +15,7 @@ class DataService:
         self.base_url = config.sitex_context_url.rstrip('/')
         
         # Инициализируем таблицу исключений при запуске
-        self._init_exceptions_table()
+        self._init_exceptions_table()fix
         
     def _init_exceptions_table(self):
         """Инициализация таблицы исключений"""
@@ -815,10 +815,7 @@ class DataService:
         
         print(f"[DEBUG] Общее количество атрибутов: {total_count}")
         
-        # Вычисляем offset для пагинации
-        offset = (page - 1) * per_page
-        
-        # ОПТИМИЗИРОВАННЫЙ запрос С ПАГИНАЦИЕЙ - получаем только нужные атрибуты И их различия
+        # ОПТИМИЗИРОВАННЫЙ запрос БЕЗ ПАГИНАЦИИ - получаем ВСЕ атрибуты для правильного подсчета статистики
         optimized_query = f"""
             WITH 
             -- Получаем все атрибуты
@@ -905,7 +902,6 @@ class DataService:
                      a.ouidsxclass, a.a_event, a.a_status_variance, a.a_priznak, 
                      a.datatype_name, a.class_name, a.class_description
             ORDER BY a.class_name, a.title, a.name
-            LIMIT {per_page} OFFSET {offset}
         """
         
         print(f"[DEBUG] Выполняем ОПТИМИЗИРОВАННЫЙ запрос...")
@@ -1077,11 +1073,22 @@ class DataService:
         
         print(f"[DEBUG] ПЕРЕСЧИТАННАЯ статистика: игнорировать={total_statistics['ignore_count']}, обновить={total_statistics['update_count']}, без действия={total_statistics['no_action_count']}")
         
-        # Статистика для текущей страницы
-        current_page_attributes_count = len(all_attributes_optimized)
+        # ПРИМЕНЯЕМ ПАГИНАЦИЮ К КЛАССАМ после подсчета статистики
+        # Создаем список всех классов для пагинации
+        all_classes_list = list(classes_data.items())
+        total_classes_count = len(all_classes_list)
         
-        # Вычисляем общее количество страниц на основе общего количества атрибутов
-        total_pages = math.ceil(total_count / per_page) if total_count > 0 else 0
+        # Применяем пагинацию
+        offset = (page - 1) * per_page
+        paginated_classes_list = all_classes_list[offset:offset + per_page]
+        
+        # Преобразуем обратно в словарь для пагинированных классов
+        paginated_classes_data = dict(paginated_classes_list)
+        
+        # Вычисляем общее количество страниц на основе общего количества классов (не атрибутов!)
+        total_pages = math.ceil(total_classes_count / per_page) if total_classes_count > 0 else 0
+        
+        print(f"[DEBUG] Пагинация классов: всего {total_classes_count} классов, на странице {len(paginated_classes_data)}")
         
         processing_time = time.time() - start_time
         print(f"[DEBUG] ОПТИМИЗАЦИЯ: обработано {len(all_attributes_optimized)} атрибутов за {processing_time:.2f} сек")
@@ -1091,9 +1098,9 @@ class DataService:
         available_properties = self._get_available_properties(all_attributes_optimized)
         
         return {
-            'classes': classes_data,
-            'total_count': total_count,
-            'total_classes': len(classes_data),
+            'classes': paginated_classes_data,
+            'total_count': sum(total_statistics.values()),  # Общее количество АТРИБУТОВ (не классов)
+            'total_classes': total_classes_count,  # Общее количество КЛАССОВ  
             'total_pages': total_pages,
             'current_page': page,
             'per_page': per_page,
