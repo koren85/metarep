@@ -1086,7 +1086,7 @@ def generate_sql_scripts():
                 # Атрибуты для обновления
                 if class_data.get('attributes', {}).get('update_list'):
                     for attr in class_data['attributes']['update_list']:
-                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance, property_filter, source_target_filter)
                         if where_conditions:
                             script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                             sql_scripts.append(script)
@@ -1094,7 +1094,7 @@ def generate_sql_scripts():
                 # Атрибуты для игнорирования
                 if class_data.get('attributes', {}).get('ignore_list'):
                     for attr in class_data['attributes']['ignore_list']:
-                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance, property_filter, source_target_filter)
                         if where_conditions:
                             script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                             sql_scripts.append(script)
@@ -1102,7 +1102,7 @@ def generate_sql_scripts():
                 # Атрибуты без действий
                 if class_data.get('attributes', {}).get('no_action_list'):
                     for attr in class_data['attributes']['no_action_list']:
-                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance, property_filter, source_target_filter)
                         if where_conditions:
                             script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                             sql_scripts.append(script)
@@ -1110,7 +1110,7 @@ def generate_sql_scripts():
         elif result.get('attributes', {}).get('fast_mode'):
             # Быстрый режим - простая таблица атрибутов
             for attr in result['attributes']['fast_mode']:
-                where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance, property_filter, source_target_filter)
                 if where_conditions:
                     script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                     sql_scripts.append(script)
@@ -1189,7 +1189,7 @@ def generate_sql_scripts_page():
                 # Атрибуты для обновления
                 if class_data.get('attributes', {}).get('update_list'):
                     for attr in class_data['attributes']['update_list']:
-                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance, property_filter, source_target_filter)
                         if where_conditions:
                             script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                             sql_scripts.append(script)
@@ -1197,7 +1197,7 @@ def generate_sql_scripts_page():
                 # Атрибуты для игнорирования
                 if class_data.get('attributes', {}).get('ignore_list'):
                     for attr in class_data['attributes']['ignore_list']:
-                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance, property_filter, source_target_filter)
                         if where_conditions:
                             script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                             sql_scripts.append(script)
@@ -1205,7 +1205,7 @@ def generate_sql_scripts_page():
                 # Атрибуты без действий
                 if class_data.get('attributes', {}).get('no_action_list'):
                     for attr in class_data['attributes']['no_action_list']:
-                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                        where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance, property_filter, source_target_filter)
                         if where_conditions:
                             script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                             sql_scripts.append(script)
@@ -1213,7 +1213,7 @@ def generate_sql_scripts_page():
         elif result.get('attributes', {}).get('fast_mode'):
             # Быстрый режим - простая таблица атрибутов
             for attr in result['attributes']['fast_mode']:
-                where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance)
+                where_conditions = _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance, property_filter, source_target_filter)
                 if where_conditions:
                     script = f"UPDATE SXATTR_SOURCE SET A_EVENT={a_event_value} WHERE {where_conditions};"
                     sql_scripts.append(script)
@@ -1231,16 +1231,23 @@ def generate_sql_scripts_page():
     except Exception as e:
         return jsonify({"error": f"Ошибка генерации скриптов: {str(e)}"}), 500
 
-def _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance):
+def _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance, property_filter, source_target_filter):
     """Построение WHERE условий для UPDATE скриптов с учетом всех фильтров"""
     conditions = []
     
-    # Обязательное условие по имени атрибута
+    # DEBUG: Отладочная информация
     attr_name = attr.get('name', '')
-    if attr_name:
-        conditions.append(f"NAME='{attr_name}'")
+    exception_actions = attr.get('exception_actions', [])
+    print(f"[DEBUG] Building WHERE for attr '{attr_name}': property_filter={property_filter}, source_target_filter={source_target_filter}, exception_actions={len(exception_actions)} actions")
+    if exception_actions:
+        print(f"[DEBUG] Exception actions sample: {exception_actions[0]}")
     
-    # Добавляем фильтры если они были применены
+    # Обязательное условие по имени атрибута
+    if attr_name:
+        safe_name = attr_name.replace("'", "''")
+        conditions.append(f"NAME='{safe_name}'")
+    
+    # Добавляем основные фильтры если они были применены
     if a_priznak is not None:
         conditions.append(f"A_PRIZNAK={a_priznak}")
     
@@ -1255,7 +1262,159 @@ def _build_where_conditions_for_update(attr, search, a_priznak, event, status_va
     if ouidsxclass:
         conditions.append(f"OUIDSXCLASS={ouidsxclass}")
     
-    return " AND ".join(conditions)
+    # Дополнительные условия на основе фильтров исключений
+    exception_actions = attr.get('exception_actions', [])
+    
+    if not exception_actions:
+        print(f"[DEBUG] No exception_actions found for '{attr_name}', will use A_LOG based filtering")
+    
+    # Фильтр по свойствам атрибутов
+    # СЛУЧАЙ 1: Есть exception_actions - используем их
+    if property_filter and exception_actions:
+        # Извлекаем уникальные property_name из отфильтрованных исключений
+        filtered_property_names = set()
+        for action in exception_actions:
+            prop_name = action.get('property_name', '')
+            if prop_name and prop_name in property_filter:
+                filtered_property_names.add(prop_name)
+        
+        print(f"[DEBUG] Property filter check for '{attr_name}': looking for {property_filter}, found {filtered_property_names}")
+        
+        if filtered_property_names:
+            print(f"[DEBUG] Adding property filter for '{attr_name}': {filtered_property_names}")
+            # Добавляем EXISTS условие для проверки наличия нужных свойств в A_LOG
+            property_names_list = list(filtered_property_names)
+            if len(property_names_list) == 1:
+                # Одно свойство
+                prop_name = property_names_list[0].replace("'", "''")
+                conditions.append(f"A_LOG LIKE '%{prop_name}:%' /* Фильтр: только свойство {property_names_list[0]} */")
+            else:
+                # Несколько свойств - используем OR условие
+                prop_conditions = []
+                for prop_name in property_names_list:
+                    safe_prop = prop_name.replace("'", "''")
+                    prop_conditions.append(f"A_LOG LIKE '%{safe_prop}:%'")
+                conditions.append(f"({' OR '.join(prop_conditions)}) /* Фильтр: свойства {', '.join(property_names_list)} */")
+    
+    # СЛУЧАЙ 2: Нет exception_actions, но есть фильтры - используем прямой поиск по A_LOG
+    elif property_filter and not exception_actions:
+        print(f"[DEBUG] Using direct A_LOG filtering for property_filter: {property_filter}")
+        # Добавляем условие поиска по свойствам напрямую в A_LOG
+        prop_conditions = []
+        for prop_name in property_filter:
+            safe_prop = prop_name.replace("'", "''")
+            prop_conditions.append(f"A_LOG LIKE '%{safe_prop}:%'")
+        
+        if len(prop_conditions) == 1:
+            conditions.append(f"{prop_conditions[0]} /* Прямой фильтр свойства: {property_filter[0]} */")
+        else:
+            conditions.append(f"({' OR '.join(prop_conditions)}) /* Прямой фильтр свойств: {', '.join(property_filter)} */")
+    
+    # Фильтр по направлению изменений Source/Target
+    if source_target_filter and exception_actions:
+        # Собираем специфичные условия для source/target значений
+        source_target_conditions = []
+        
+        for action in exception_actions:
+            source_val = action.get('source_value', '')
+            target_val = action.get('target_value', '')
+            prop_name = action.get('property_name', '')
+            
+            # Логика фильтрации (повторяем из data_service.py)
+            source_empty = not source_val or source_val.strip() == ''
+            target_empty = not target_val or target_val.strip() == ''
+            
+            include_action = False
+            
+            if source_target_filter == 'source_to_null':
+                # Source → Null (удаление): есть source, нет target
+                include_action = not source_empty and target_empty
+            elif source_target_filter == 'null_to_target':
+                # Null → Target (добавление): нет source, есть target
+                include_action = source_empty and not target_empty
+            elif source_target_filter == 'source_to_target':
+                # Source → Target (изменение): есть и source и target
+                include_action = not source_empty and not target_empty
+            elif source_target_filter == 'has_source':
+                # Есть Source (любые с исходным значением)
+                include_action = not source_empty
+            elif source_target_filter == 'has_target':
+                # Есть Target (любые с целевым значением)
+                include_action = not target_empty
+            
+            if include_action and prop_name:
+                # Экранируем значения для безопасности SQL
+                safe_source = source_val.replace("'", "''") if source_val else ''
+                safe_target = target_val.replace("'", "''") if target_val else ''
+                safe_prop = prop_name.replace("'", "''")
+                
+                # Создаем условие проверяющее конкретное свойство и его значения в A_LOG
+                if not source_empty and not target_empty:
+                    # Есть и source и target
+                    log_condition = f"A_LOG LIKE '%{safe_prop}: {safe_source} -> {safe_target}%'"
+                elif not source_empty and target_empty:
+                    # Только source, target пустой
+                    log_condition = f"A_LOG LIKE '%{safe_prop}: {safe_source} ->%'"
+                elif source_empty and not target_empty:
+                    # Только target, source пустой
+                    log_condition = f"A_LOG LIKE '%{safe_prop}:  -> {safe_target}%'"
+                else:
+                    # Оба пустые - общее условие по свойству
+                    log_condition = f"A_LOG LIKE '%{safe_prop}:%'"
+                
+                source_target_conditions.append(log_condition)
+        
+        if source_target_conditions:
+            print(f"[DEBUG] Adding source_target filter for '{attr_name}': {len(source_target_conditions)} conditions")
+            # Объединяем условия через OR (любое из найденных сочетаний)
+            if len(source_target_conditions) == 1:
+                conditions.append(f"{source_target_conditions[0]} /* Фильтр {source_target_filter} */")
+            else:
+                conditions.append(f"({' OR '.join(source_target_conditions)}) /* Фильтр {source_target_filter}: {len(source_target_conditions)} условий */")
+    
+    # СЛУЧАЙ 2 для source_target_filter: Нет exception_actions, но есть фильтры - используем прямой поиск по A_LOG
+    elif source_target_filter and not exception_actions:
+        print(f"[DEBUG] Using direct A_LOG filtering for source_target_filter: {source_target_filter}")
+        
+        # Создаем условие для source_target_filter с учетом property_filter
+        if property_filter:
+            # Комбинируем фильтр свойства с фильтром направления
+            combined_conditions = []
+            for prop_name in property_filter:
+                safe_prop = prop_name.replace("'", "''")
+                
+                if source_target_filter == 'source_to_null':
+                    # Source → Null: ищем строки вида "grp: value ->\n" (source есть, target пустой)
+                    log_condition = f"A_LOG LIKE '%{safe_prop}: %->%' AND A_LOG NOT LIKE '%{safe_prop}:  ->%'"
+                elif source_target_filter == 'null_to_target':
+                    # Null → Target: ищем строки вида "grp:  -> value"
+                    log_condition = f"A_LOG LIKE '%{safe_prop}:  -> %'"
+                elif source_target_filter == 'source_to_target':
+                    # Source → Target: ищем строки вида "grp: value1 -> value2" (оба значения)
+                    log_condition = f"A_LOG LIKE '%{safe_prop}: % -> %' AND A_LOG NOT LIKE '%{safe_prop}:  -> %'"
+                elif source_target_filter == 'has_source':
+                    # Есть Source: любые строки со значением источника (не пустым)
+                    log_condition = f"A_LOG LIKE '%{safe_prop}: %' AND A_LOG NOT LIKE '%{safe_prop}:  %'"
+                elif source_target_filter == 'has_target':
+                    # Есть Target: любые строки со значением назначения
+                    log_condition = f"A_LOG LIKE '%{safe_prop}: %-> %'"
+                else:
+                    # Общий случай - просто проверяем наличие свойства
+                    log_condition = f"A_LOG LIKE '%{safe_prop}:%'"
+                
+                combined_conditions.append(log_condition)
+            
+            if len(combined_conditions) == 1:
+                conditions.append(f"{combined_conditions[0]} /* Прямой фильтр {source_target_filter} для {property_filter[0]} */")
+            else:
+                conditions.append(f"({' OR '.join(combined_conditions)}) /* Прямой фильтр {source_target_filter} для свойств {', '.join(property_filter)} */")
+        else:
+            # Только source_target_filter без привязки к конкретным свойствам - сложнее реализовать
+            print(f"[DEBUG] Warning: source_target_filter without property_filter is not supported for direct A_LOG filtering")
+    
+    final_where = " AND ".join(conditions)
+    print(f"[DEBUG] Final WHERE condition for '{attr_name}': {final_where}")
+    return final_where
 
 @app.errorhandler(404)
 def not_found(error):
