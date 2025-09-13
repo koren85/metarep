@@ -1303,7 +1303,7 @@ def _build_where_conditions_for_update(attr, search, a_priznak, event, status_va
         prop_conditions = []
         for prop_name in property_filter:
             safe_prop = prop_name.replace("'", "''")
-            prop_conditions.append(f"A_LOG LIKE '%{safe_prop}:%'")
+            prop_conditions.append(f"A_LOG LIKE '%{safe_prop}%'")
         
         if len(prop_conditions) == 1:
             conditions.append(f"{prop_conditions[0]} /* Прямой фильтр свойства: {property_filter[0]} */")
@@ -1384,23 +1384,26 @@ def _build_where_conditions_for_update(attr, search, a_priznak, event, status_va
                 safe_prop = prop_name.replace("'", "''")
                 
                 if source_target_filter == 'source_to_null':
-                    # Source → Null: ищем строки вида "grp: value ->\n" (source есть, target пустой)
-                    log_condition = f"A_LOG LIKE '%{safe_prop}: %->%' AND A_LOG NOT LIKE '%{safe_prop}:  ->%'"
+                    # Source → Null: ищем блок 'grp' где source имеет значение, а target = null
+                    # Формат: "grp\n\tsource = value\n\ttarget = null"
+                    log_condition = f"A_LOG LIKE '%{safe_prop}%source = %target = null%' AND A_LOG NOT LIKE '%{safe_prop}%source = null%'"
                 elif source_target_filter == 'null_to_target':
-                    # Null → Target: ищем строки вида "grp:  -> value"
-                    log_condition = f"A_LOG LIKE '%{safe_prop}:  -> %'"
+                    # Null → Target: ищем блок 'grp' где source = null, а target имеет значение
+                    # Формат: "grp\n\tsource = null\n\ttarget = value"
+                    log_condition = f"A_LOG LIKE '%{safe_prop}%source = null%target = %' AND A_LOG NOT LIKE '%{safe_prop}%target = null%'"
                 elif source_target_filter == 'source_to_target':
-                    # Source → Target: ищем строки вида "grp: value1 -> value2" (оба значения)
-                    log_condition = f"A_LOG LIKE '%{safe_prop}: % -> %' AND A_LOG NOT LIKE '%{safe_prop}:  -> %'"
+                    # Source → Target: оба поля имеют значения (НЕ null)
+                    # Формат: "grp\n\tsource = value1\n\ttarget = value2"
+                    log_condition = f"A_LOG LIKE '%{safe_prop}%source = %target = %' AND A_LOG NOT LIKE '%{safe_prop}%source = null%' AND A_LOG NOT LIKE '%{safe_prop}%target = null%'"
                 elif source_target_filter == 'has_source':
-                    # Есть Source: любые строки со значением источника (не пустым)
-                    log_condition = f"A_LOG LIKE '%{safe_prop}: %' AND A_LOG NOT LIKE '%{safe_prop}:  %'"
+                    # Есть Source: ищем блок 'grp' где source не равен null
+                    log_condition = f"A_LOG LIKE '%{safe_prop}%source = %' AND A_LOG NOT LIKE '%{safe_prop}%source = null%'"
                 elif source_target_filter == 'has_target':
-                    # Есть Target: любые строки со значением назначения
-                    log_condition = f"A_LOG LIKE '%{safe_prop}: %-> %'"
+                    # Есть Target: ищем блок 'grp' где target не равен null
+                    log_condition = f"A_LOG LIKE '%{safe_prop}%target = %' AND A_LOG NOT LIKE '%{safe_prop}%target = null%'"
                 else:
-                    # Общий случай - просто проверяем наличие свойства
-                    log_condition = f"A_LOG LIKE '%{safe_prop}:%'"
+                    # Общий случай - просто проверяем наличие свойства в блоке
+                    log_condition = f"A_LOG LIKE '%{safe_prop}%'"
                 
                 combined_conditions.append(log_condition)
             
