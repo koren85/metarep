@@ -459,6 +459,18 @@ class DataService:
                 filtered_classes_by_action['no_action_list'] = classes_by_action['no_action_list']
             classes_by_action = filtered_classes_by_action
         
+        # ПЕРЕСЧИТЫВАЕМ СТАТИСТИКУ после применения всех фильтров
+        recalculated_statistics = {
+            'ignore_count': len(classes_by_action['ignore_list']),
+            'update_count': len(classes_by_action['update_list']),
+            'no_action_count': len(classes_by_action['no_action_list'])
+        }
+        
+        print(f"[DEBUG] ПЕРЕСЧИТАННАЯ статистика классов: игнорировать={recalculated_statistics['ignore_count']}, обновить={recalculated_statistics['update_count']}, без действия={recalculated_statistics['no_action_count']}")
+        
+        # Заменяем статистику на пересчитанную
+        total_statistics = recalculated_statistics
+        
         # Применяем пагинацию к общему списку классов
         all_filtered_classes = classes_by_action['ignore_list'] + classes_by_action['update_list'] + classes_by_action['no_action_list']
         total_classes_count = len(all_filtered_classes)
@@ -1040,6 +1052,30 @@ class DataService:
                 
         classes_data = non_empty_classes_data
         print(f"[DEBUG] После удаления пустых классов: {len(classes_data)} классов")
+        
+        # ПЕРЕСЧИТЫВАЕМ СТАТИСТИКУ после применения всех фильтров
+        recalculated_statistics = {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
+        
+        for class_name, class_data in classes_data.items():
+            # Пересчитываем статистику на основе ФАКТИЧЕСКИХ списков атрибутов
+            ignore_count = len(class_data['attributes']['ignore_list'])
+            update_count = len(class_data['attributes']['update_list'])
+            no_action_count = len(class_data['attributes']['no_action_list'])
+            
+            # Обновляем статистику класса
+            class_data['statistics']['ignore_count'] = ignore_count
+            class_data['statistics']['update_count'] = update_count
+            class_data['statistics']['no_action_count'] = no_action_count
+            
+            # Суммируем для общей статистики
+            recalculated_statistics['ignore_count'] += ignore_count
+            recalculated_statistics['update_count'] += update_count
+            recalculated_statistics['no_action_count'] += no_action_count
+        
+        # Заменяем статистику на пересчитанную
+        total_statistics = recalculated_statistics
+        
+        print(f"[DEBUG] ПЕРЕСЧИТАННАЯ статистика: игнорировать={total_statistics['ignore_count']}, обновить={total_statistics['update_count']}, без действия={total_statistics['no_action_count']}")
         
         # Статистика для текущей страницы
         current_page_attributes_count = len(all_attributes_optimized)
