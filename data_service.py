@@ -488,6 +488,15 @@ class DataService:
         # Получаем список всех доступных свойств для фильтра
         available_properties = self._get_available_properties_classes(all_classes_optimized)
         
+        # Пересчитываем статистику ПОСЛЕ применения всех фильтров
+        # ВАЖНО: используем НЕ paginated списки, а полные отфильтрованные списки classes_by_action
+        filtered_statistics = {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
+        filtered_statistics['ignore_count'] = len(classes_by_action['ignore_list'])
+        filtered_statistics['update_count'] = len(classes_by_action['update_list'])
+        filtered_statistics['no_action_count'] = len(classes_by_action['no_action_list'])
+        
+        print(f"[DEBUG] Пересчет статистики классов ПОСЛЕ фильтров: игнорировать={filtered_statistics['ignore_count']}, обновить={filtered_statistics['update_count']}, без действия={filtered_statistics['no_action_count']}")
+        
         return {
             'classes_by_action': paginated_by_action,
             'total_count': total_classes_count,
@@ -496,7 +505,7 @@ class DataService:
             'per_page': per_page,
             'has_prev': page > 1,
             'has_next': page < total_pages,
-            'statistics': total_statistics,
+            'statistics': filtered_statistics,
             'exception_action_filter': exception_action_filter,
             'analyze_exceptions': True,
             'optimization_info': {
@@ -1044,6 +1053,17 @@ class DataService:
         # Получаем список всех доступных свойств для фильтра
         available_properties = self._get_available_properties(all_attributes_optimized)
         
+        # Пересчитываем статистику ПОСЛЕ применения всех фильтров
+        # ВАЖНО: используем non_empty_classes_data (все отфильтрованные классы), а не paginated_classes_data (только текущая страница)
+        filtered_statistics = {'ignore_count': 0, 'update_count': 0, 'no_action_count': 0}
+        for class_name, class_data in non_empty_classes_data.items():
+            # Подсчитываем атрибуты по действиям на основе отфильтрованных списков
+            filtered_statistics['ignore_count'] += len(class_data['attributes']['ignore_list'])
+            filtered_statistics['update_count'] += len(class_data['attributes']['update_list'])
+            filtered_statistics['no_action_count'] += len(class_data['attributes']['no_action_list'])
+        
+        print(f"[DEBUG] Пересчет статистики ПОСЛЕ фильтров: игнорировать={filtered_statistics['ignore_count']}, обновить={filtered_statistics['update_count']}, без действия={filtered_statistics['no_action_count']}")
+        
         return {
             'classes': paginated_classes_data,
             'total_count': total_attributes_count,
@@ -1053,7 +1073,7 @@ class DataService:
             'per_page': per_page,
             'has_prev': page > 1,
             'has_next': page < total_pages,
-            'statistics': total_statistics,
+            'statistics': filtered_statistics,
             'exception_action_filter': exception_action_filter,
             'analyze_exceptions': True,
             'optimization_info': {
