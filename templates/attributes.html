@@ -217,6 +217,9 @@
                     <button onclick="generateSqlScripts()" class="btn btn-warning btn-sm">
                         <i class="bi bi-file-earmark-code-fill"></i> Скрипты для всех
                     </button>
+                    <button onclick="generateDataUpdateScripts()" class="btn btn-info btn-sm">
+                        <i class="bi bi-database-fill-up"></i> Скрипты обновления данных
+                    </button>
                 </div>
                 {% endif %}
             </div>
@@ -942,6 +945,66 @@ function generateSqlScriptsPage() {
         .catch(error => {
             console.error('Ошибка при генерации скриптов:', error);
             alert('Ошибка при генерации SQL скриптов: ' + error.message);
+        })
+        .finally(() => {
+            // Восстанавливаем кнопку
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        });
+}
+
+function generateDataUpdateScripts() {
+    // Получаем текущие параметры URL
+    const urlParams = new URLSearchParams(window.location.search);
+    
+    // Проверяем что анализ исключений включен
+    if (urlParams.get('analyze_exceptions') !== 'true') {
+        alert('Скрипты обновления данных доступны только при включенном анализе исключений');
+        return;
+    }
+    
+    // Проверяем что есть фильтр source_to_null
+    if (urlParams.get('source_target_filter') !== 'source_to_null') {
+        alert('Скрипты обновления данных работают только с фильтром "Source → Null"');
+        return;
+    }
+    
+    // Проверяем что есть фильтр по свойствам
+    if (!urlParams.has('property_filter')) {
+        alert('Для генерации скриптов обновления необходимо указать фильтр по свойствам (например, grp)');
+        return;
+    }
+    
+    // Показываем индикатор загрузки
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Генерация...';
+    btn.disabled = true;
+    
+    // Формируем URL для API
+    const apiUrl = '/api/generate_data_update_scripts?' + urlParams.toString();
+    
+    // Выполняем запрос к API
+    fetch(apiUrl)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Заполняем модальное окно
+                document.getElementById('sqlScriptsText').value = data.scripts;
+                document.getElementById('sqlScriptsCount').textContent = data.count;
+                document.getElementById('sqlScriptsMessage').textContent = 
+                    `Скрипты обновят данные в целевой системе. Обработано ${data.processed_count} атрибутов.`;
+                
+                // Показываем модальное окно
+                const modal = new bootstrap.Modal(document.getElementById('sqlScriptsModal'));
+                modal.show();
+            } else {
+                alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка при генерации скриптов обновления:', error);
+            alert('Ошибка при генерации скриптов обновления: ' + error.message);
         })
         .finally(() => {
             // Восстанавливаем кнопку

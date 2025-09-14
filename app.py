@@ -1231,6 +1231,179 @@ def generate_sql_scripts_page():
     except Exception as e:
         return jsonify({"error": f"Ошибка генерации скриптов: {str(e)}"}), 500
 
+@app.route('/api/generate_data_update_scripts')
+def generate_data_update_scripts():
+    """API для генерации SQL скриптов обновления данных в целевой системе"""
+    
+    # Получаем те же параметры что и для обычных скриптов
+    search = request.args.get('search', '')
+    status_variance = request.args.get('status_variance', type=int)
+    event = request.args.get('event', type=int)
+    a_priznak = request.args.get('a_priznak', type=int)
+    base_url = request.args.get('base_url', '')
+    source_base_url = request.args.get('source_base_url', '')
+    exception_action_filter = request.args.get('exception_action_filter', type=int)
+    analyze_exceptions_param = request.args.get('analyze_exceptions', 'false').lower()
+    analyze_exceptions = analyze_exceptions_param == 'true'
+    
+    # Фильтры исключений применяются только в режиме анализа исключений
+    if analyze_exceptions:
+        source_target_filter = request.args.get('source_target_filter', '')
+        property_filter = request.args.getlist('property_filter')
+        show_update_actions_values = request.args.getlist('show_update_actions')
+        show_update_actions = 'true' in show_update_actions_values
+    else:
+        source_target_filter = None
+        property_filter = None  
+        show_update_actions = True
+    
+    # Проверяем что работаем только с source_to_null
+    if source_target_filter != 'source_to_null':
+        return jsonify({"error": "Скрипты обновления данных работают только с фильтром 'source_to_null'"}), 400
+    
+    if not property_filter:
+        return jsonify({"error": "Для генерации скриптов обновления необходимо указать фильтр по свойствам"}), 400
+    
+    try:
+        # Получаем данные с анализом исключений (все записи)
+        result = data_service.get_attributes(
+            page=1,
+            per_page=100000,  # Получаем все записи
+            search=search if search else None,
+            status_variance=status_variance,
+            event=event,
+            a_priznak=a_priznak,
+            base_url=base_url if base_url else None,
+            source_base_url=source_base_url if source_base_url else None,
+            exception_action_filter=exception_action_filter,
+            analyze_exceptions=True,  # Принудительно включаем анализ для получения данных исключений
+            source_target_filter=source_target_filter,
+            property_filter=property_filter,
+            show_update_actions=show_update_actions
+        )
+        
+        if 'error' in result:
+            return jsonify({"error": result['error']}), 500
+        
+        # Генерируем SQL скрипты обновления данных
+        sql_scripts = []
+        processed_count = 0
+        
+        if result.get('classes'):
+            for class_name, class_data in result['classes'].items():
+                # Обрабатываем все списки атрибутов
+                for list_name in ['update_list', 'ignore_list', 'no_action_list']:
+                    attr_list = class_data.get('attributes', {}).get(list_name, [])
+                    for attr in attr_list:
+                        attr_name = attr.get('name', '')
+                        attr_ouid = attr.get('ouid', '')
+                        exception_actions = attr.get('exception_actions', [])
+                        
+                        if not attr_name or not attr_ouid or not exception_actions:
+                            continue
+                        
+                        # Ищем исключения с source_to_null для указанных свойств
+                        for action in exception_actions:
+                            prop_name = action.get('property_name', '')
+                            source_val = action.get('source_value', '')
+                            target_val = action.get('target_value', '')
+                            
+                            if (prop_name in property_filter and 
+                                source_val and source_val.strip() != '' and source_val != 'null' and
+                                (not target_val or target_val.strip() == '' or target_val == 'null')):
+                                
+                                # Извлекаем ID из source значения (например "11008462@SXAttrGrpSource" → "11008462")
+                                source_id = _extract_id_from_source_value(source_val)
+                                
+                                if source_id:
+                                    # Получаем маппинг поля БД для свойства
+                                    field_mapping = _get_field_mapping(prop_name)
+                                    
+                                    if field_mapping:
+                                        # Генерируем UPDATE скрипт
+                                        update_script = _generate_update_script(
+                                            attr_ouid, prop_name, source_id, field_mapping
+                                        )
+                                        
+                                        if update_script:
+                                            sql_scripts.append(update_script)
+                                            processed_count += 1
+        
+        # Формируем итоговый результат
+        all_scripts = '\n\n'.join(sql_scripts)
+        
+        return jsonify({
+            "success": True,
+            "scripts": all_scripts,
+            "count": len(sql_scripts),
+            "processed_count": processed_count,
+            "message": f"Сгенерировано {len(sql_scripts)} скриптов обновления данных"
+        })
+        
+    except Exception as e:
+        return jsonify({"error": f"Ошибка генерации скриптов обновления: {str(e)}"}), 500
+
+def _extract_id_from_source_value(source_value):
+    """Извлекает ID из строки типа '11008462@SXAttrGrpSource'"""
+    try:
+        if '@' in source_value:
+            return source_value.split('@')[0].strip()
+        return source_value.strip()
+    except Exception:
+        return None
+
+def _get_field_mapping(property_name):
+    """Получает маппинг поля БД для свойства через запрос к метаданным"""
+    try:
+        # Используем подключение к БД через data_service
+        if not data_service.db_manager.connect():
+            return None
+        
+        query = f"SELECT map FROM sxattr WHERE name = '{property_name.replace('\"', '\"\"')}' LIMIT 1"
+        result = data_service.db_manager.execute_query(query)
+        
+        if result and len(result) > 0:
+            return result[0][0] 
+        
+        return None
+    except Exception as e:
+        print(f"[ERROR] Ошибка получения маппинга для {property_name}: {e}")
+        return None
+    finally:
+        data_service.db_manager.disconnect()
+
+def _generate_update_script(attr_ouid, property_name, source_id, field_mapping):
+    """Генерирует UPDATE скрипт для обновления данных"""
+    try:
+        # Определяем исходную и целевую таблицы на основе свойства
+        source_table = f"SXATTR_{property_name.upper()}_SOURCE"
+        target_table = f"SXATTR_{property_name.upper()}"
+        
+        # Генерируем UPDATE скрипт
+        script = f"""UPDATE sxattr
+SET {field_mapping} = (
+    SELECT grp.ouid
+    FROM {target_table} grp
+    JOIN SXOBJ o ON grp.ouid = o.ouid
+    WHERE o.guid = (
+        SELECT guid 
+        FROM {source_table} sgrp 
+        WHERE sgrp.ouid = {source_id} 
+        LIMIT 1
+    )
+)
+WHERE ouid = (
+    SELECT A_LINK_TARGET 
+    FROM SXATTR_SOURCE attrs 
+    WHERE attrs.ouid = {attr_ouid} 
+    LIMIT 1
+); /* Обновление {property_name} для атрибута {attr_ouid} */"""
+        
+        return script
+    except Exception as e:
+        print(f"[ERROR] Ошибка генерации скрипта для {attr_ouid}: {e}")
+        return None
+
 def _build_where_conditions_for_update(attr, search, a_priznak, event, status_variance, property_filter, source_target_filter):
     """Построение WHERE условий для UPDATE скриптов с учетом всех фильтров"""
     conditions = []
