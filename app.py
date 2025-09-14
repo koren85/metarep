@@ -1359,7 +1359,9 @@ def _get_field_mapping(property_name):
         if not data_service.db_manager.connect():
             return None
         
-        query = f"SELECT map FROM sxattr WHERE name = '{property_name.replace('\"', '\"\"')}' LIMIT 1"
+        # Экранируем кавычки отдельно от f-string
+        safe_property_name = property_name.replace("'", "''")
+        query = f"SELECT map FROM sxattr WHERE name = '{safe_property_name}' LIMIT 1"
         result = data_service.db_manager.execute_query(query)
         
         if result and len(result) > 0:
