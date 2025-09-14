@@ -989,11 +989,14 @@ function generateDataUpdateScripts() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
+                // Отладочная информация
+                console.log(`[DEBUG] Получено ${data.count} скриптов, размер данных: ${data.scripts ? data.scripts.length : 0} символов`);
+                
                 // Заполняем модальное окно
-                document.getElementById('sqlScriptsText').value = data.scripts;
+                document.getElementById('sqlScriptsText').value = data.scripts || '';
                 document.getElementById('sqlScriptsCount').textContent = data.count;
                 document.getElementById('sqlScriptsMessage').textContent = 
-                    `Скрипты обновят данные в целевой системе. Обработано ${data.processed_count} атрибутов.`;
+                    data.message || `Скрипты обновят данные в целевой системе. Обработано ${data.processed_count} атрибутов.`;
                 
                 // Показываем модальное окно
                 const modal = new bootstrap.Modal(document.getElementById('sqlScriptsModal'));
@@ -1043,9 +1046,9 @@ function copySqlScripts() {
 </script>
 
 <!-- Модальное окно для SQL скриптов -->
-<div class="modal fade" id="sqlScriptsModal" tabindex="-1" aria-labelledby="sqlScriptsModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
+    <div class="modal fade" id="sqlScriptsModal" tabindex="-1" aria-labelledby="sqlScriptsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="sqlScriptsModalLabel">
                     <i class="bi bi-file-earmark-code"></i> SQL скрипты для атрибутов
@@ -1063,9 +1066,9 @@ function copySqlScripts() {
                     <label for="sqlScriptsText" class="form-label">SQL скрипты:</label>
                     <textarea class="form-control font-monospace" 
                               id="sqlScriptsText" 
-                              rows="15" 
+                              rows="25" 
                               readonly 
-                              style="font-size: 0.9em; background-color: #f8f9fa;"
+                              style="font-size: 0.9em; background-color: #f8f9fa; height: 60vh; max-height: 80vh;"
                               placeholder="SQL скрипты будут отображены здесь..."></textarea>
                 </div>
             </div>

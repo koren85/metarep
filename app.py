@@ -13,6 +13,10 @@ from io import BytesIO
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.urandom(24)
 
+# Увеличиваем лимиты для больших JSON ответов
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB
+app.config['JSON_AS_ASCII'] = False
+
 # Добавляем фильтр для форматирования даты
 @app.template_filter('strftime')
 def strftime_filter(date_str, format='%d.%m.%Y %H:%M'):
@@ -1332,12 +1336,15 @@ def generate_data_update_scripts():
         # Формируем итоговый результат
         all_scripts = '\n\n'.join(sql_scripts)
         
+        # Отладочная информация о размере результата
+        print(f"[DEBUG] Сгенерировано {len(sql_scripts)} скриптов, общий размер: {len(all_scripts)} символов")
+        
         return jsonify({
             "success": True,
             "scripts": all_scripts,
             "count": len(sql_scripts),
             "processed_count": processed_count,
-            "message": f"Сгенерировано {len(sql_scripts)} скриптов обновления данных"
+            "message": f"Сгенерировано {len(sql_scripts)} скриптов обновления данных ({len(all_scripts)} символов)"
         })
         
     except Exception as e:
