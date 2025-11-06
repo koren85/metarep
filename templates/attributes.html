@@ -220,6 +220,9 @@
                     <button onclick="generateDataUpdateScripts()" class="btn btn-info btn-sm">
                         <i class="bi bi-database-fill-up"></i> Скрипты обновления данных
                     </button>
+                    <button onclick="updateEventAll()" class="btn btn-danger btn-sm">
+                        <i class="bi bi-lightning-charge-fill"></i> A_EVENT=2 всем
+                    </button>
                 </div>
                 {% endif %}
             </div>
@@ -421,6 +424,12 @@
                 <div id="collapse-{{ loop.index }}" class="accordion-collapse collapse" 
                      aria-labelledby="heading-{{ loop.index }}" data-bs-parent="#classesAccordion">
                     <div class="accordion-body p-0">
+                        <!-- Действия для класса -->
+                        <div class="d-flex justify-content-end p-2 border-bottom">
+                            <button class="btn btn-outline-danger btn-sm" onclick="updateEventForClass({{ class_data.class_ouid }})">
+                                <i class="bi bi-lightning-charge"></i> Проставить A_EVENT=2 всем атрибутам класса
+                            </button>
+                        </div>
                         
                         <!-- Атрибуты для обновления -->
                         {% if class_data.attributes.update_list|length > 0 %}
@@ -441,6 +450,7 @@
                                             <th>Target</th>
                                             <th>Признак</th>
                                             <th>Админка</th>
+                                            <th>Действие</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -480,6 +490,11 @@
                                                     </button>
                                                 </div>
                                             </td>
+                                            <td>
+                                                <button class="btn btn-outline-danger btn-sm" data-attr-ouid="{{ attr.ouid }}" onclick="updateEventForAttribute({{ attr.ouid }})" title="Проставить A_EVENT=2">
+                                                    <i class="bi bi-lightning"></i>
+                                                </button>
+                                            </td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
@@ -507,6 +522,7 @@
                                             <th>Target</th>
                                             <th>Признак</th>
                                             <th>Админка</th>
+                                            <th>Действие</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -546,6 +562,11 @@
                                                     </button>
                                                 </div>
                                             </td>
+                                            <td>
+                                                <button class="btn btn-outline-danger btn-sm" data-attr-ouid="{{ attr.ouid }}" onclick="updateEventForAttribute({{ attr.ouid }})" title="Проставить A_EVENT=2">
+                                                    <i class="bi bi-lightning"></i>
+                                                </button>
+                                            </td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
@@ -573,6 +594,7 @@
                                             <th>Target</th>
                                             <th>Признак</th>
                                             <th>Админка</th>
+                                            <th>Действие</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -611,6 +633,11 @@
                                                         <i class="bi bi-arrow-up-right"></i>
                                                     </button>
                                                 </div>
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-outline-danger btn-sm" data-attr-ouid="{{ attr.ouid }}" onclick="updateEventForAttribute({{ attr.ouid }})" title="Проставить A_EVENT=2">
+                                                    <i class="bi bi-lightning"></i>
+                                                </button>
                                             </td>
                                         </tr>
                                         {% endfor %}
@@ -1014,6 +1041,121 @@ function generateDataUpdateScripts() {
             btn.innerHTML = originalText;
             btn.disabled = false;
         });
+}
+
+function getCurrentFiltersPayload() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const payload = {
+        search: urlParams.get('search') || '',
+        status_variance: urlParams.get('status_variance') || '',
+        event: urlParams.get('event') || '',
+        a_priznak: urlParams.get('a_priznak') || '',
+        base_url: urlParams.get('base_url') || '',
+        source_base_url: urlParams.get('source_base_url') || '',
+        exception_action_filter: urlParams.get('exception_action_filter') || '',
+        analyze_exceptions: urlParams.get('analyze_exceptions') || 'false',
+        source_target_filter: urlParams.get('source_target_filter') || '',
+        property_filter: urlParams.getAll('property_filter'),
+        show_update_actions: (urlParams.getAll('show_update_actions').includes('true') || urlParams.get('show_update_actions') === 'true') ? 'true' : 'false'
+    };
+    return payload;
+}
+
+function updateEventAll() {
+    const payload = getCurrentFiltersPayload();
+    const btn = event.target.closest('button');
+    const original = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Выполняю...';
+    btn.disabled = true;
+    fetch('/api/attributes/set_event_bulk', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    }).then(r => r.json())
+      .then(data => {
+          if (data.success) {
+              alert(`Обновлено строк: ${data.updated}`);
+              const buttons = document.querySelectorAll('button[data-attr-ouid]');
+              markButtonsUpdated(Array.from(buttons));
+          } else {
+              alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+          }
+      })
+      .catch(err => {
+          console.error('Ошибка массового обновления:', err);
+          alert('Ошибка массового обновления: ' + err.message);
+      })
+      .finally(() => {
+          btn.innerHTML = original;
+          btn.disabled = false;
+      });
+}
+
+function updateEventForClass(classOuid) {
+    const payload = getCurrentFiltersPayload();
+    const btn = event.target.closest('button');
+    const original = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Выполняю...';
+    btn.disabled = true;
+    fetch(`/api/class/${classOuid}/attributes/set_event`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+    }).then(r => r.json())
+      .then(data => {
+          if (data.success) {
+              alert(`Класс ${classOuid}: обновлено строк: ${data.updated}`);
+              const container = btn.closest('.accordion-item') || document;
+              const buttons = container.querySelectorAll('button[data-attr-ouid]');
+              markButtonsUpdated(Array.from(buttons));
+          } else {
+              alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+          }
+      })
+      .catch(err => {
+          console.error('Ошибка обновления по классу:', err);
+          alert('Ошибка обновления по классу: ' + err.message);
+      })
+      .finally(() => {
+          btn.innerHTML = original;
+          btn.disabled = false;
+      });
+}
+
+function updateEventForAttribute(attrOuid) {
+    const btn = event.target.closest('button');
+    const original = btn.innerHTML;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+    btn.disabled = true;
+    fetch(`/api/attribute/${attrOuid}/set_event`, { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+          if (data.success) {
+              markButtonsUpdated([btn]);
+          } else {
+              alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+              btn.innerHTML = original;
+              btn.disabled = false;
+          }
+      })
+      .catch(err => {
+          console.error('Ошибка обновления атрибута:', err);
+          alert('Ошибка обновления атрибута: ' + err.message);
+          btn.innerHTML = original;
+          btn.disabled = false;
+      });
+}
+
+function markButtonsUpdated(buttons) {
+    buttons.forEach((b) => {
+        try {
+            b.classList.remove('btn-outline-danger');
+            b.classList.add('btn-success');
+            b.innerHTML = '<i class="bi bi-check"></i>';
+            b.title = 'A_EVENT=2 установлено';
+            b.disabled = true;
+        } catch (_) {}
+    });
 }
 
 function copySqlScripts() {

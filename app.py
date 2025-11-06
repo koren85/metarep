@@ -1350,6 +1350,117 @@ def generate_data_update_scripts():
     except Exception as e:
         return jsonify({"error": f"Ошибка генерации скриптов обновления: {str(e)}"}), 500
 
+# ===== Эндпоинты: Установка A_EVENT=2 в SXATTR_SOURCE =====
+
+@app.route('/api/attribute/<int:attr_ouid>/set_event', methods=['POST'])
+def api_set_attribute_event(attr_ouid):
+    """Установить A_EVENT=2 для одного атрибута по OUID"""
+    try:
+        result = data_service.update_attribute_event_by_ouid(attr_ouid, 2)
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": f"Ошибка обновления атрибута: {e}"}), 500
+
+
+def _parse_filters_from_json(payload: dict):
+    """Вспомогательная: привести фильтры из JSON к нужным типам"""
+    search = payload.get('search') or None
+    status_variance = payload.get('status_variance')
+    status_variance = int(status_variance) if status_variance not in (None, "") else None
+    event = payload.get('event')
+    event = int(event) if event not in (None, "") else None
+    a_priznak = payload.get('a_priznak')
+    a_priznak = int(a_priznak) if a_priznak not in (None, "") else None
+    base_url = payload.get('base_url') or None
+    source_base_url = payload.get('source_base_url') or None
+    exception_action_filter = payload.get('exception_action_filter')
+    exception_action_filter = int(exception_action_filter) if exception_action_filter not in (None, "") else None
+    analyze_exceptions = payload.get('analyze_exceptions')
+    if isinstance(analyze_exceptions, str):
+        analyze_exceptions = analyze_exceptions.lower() == 'true'
+    elif analyze_exceptions is None:
+        analyze_exceptions = False
+    source_target_filter = payload.get('source_target_filter') or None
+    property_filter = payload.get('property_filter') or None
+    if isinstance(property_filter, list) and len(property_filter) == 0:
+        property_filter = None
+    show_update_actions = payload.get('show_update_actions')
+    if isinstance(show_update_actions, str):
+        show_update_actions = show_update_actions.lower() == 'true'
+    if show_update_actions is None:
+        show_update_actions = True
+    return {
+        'search': search,
+        'status_variance': status_variance,
+        'event': event,
+        'a_priznak': a_priznak,
+        'base_url': base_url,
+        'source_base_url': source_base_url,
+        'exception_action_filter': exception_action_filter,
+        'analyze_exceptions': analyze_exceptions,
+        'source_target_filter': source_target_filter,
+        'property_filter': property_filter,
+        'show_update_actions': show_update_actions
+    }
+
+
+@app.route('/api/class/<int:class_ouid>/attributes/set_event', methods=['POST'])
+def api_set_event_for_class_attributes(class_ouid):
+    """Установить A_EVENT=2 для всех атрибутов класса согласно текущим фильтрам"""
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        filters = _parse_filters_from_json(payload)
+        result = data_service.update_attributes_event_by_class(
+            class_ouid=class_ouid,
+            page=1,
+            per_page=100000,
+            search=filters['search'],
+            status_variance=filters['status_variance'],
+            event=filters['event'],
+            a_priznak=filters['a_priznak'],
+            base_url=filters['base_url'],
+            source_base_url=filters['source_base_url'],
+            exception_action_filter=filters['exception_action_filter'],
+            analyze_exceptions=filters['analyze_exceptions'],
+            source_target_filter=filters['source_target_filter'],
+            property_filter=filters['property_filter'],
+            show_update_actions=filters['show_update_actions']
+        )
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": f"Ошибка массового обновления по классу: {e}"}), 500
+
+
+@app.route('/api/attributes/set_event_bulk', methods=['POST'])
+def api_set_event_for_all_filtered():
+    """Установить A_EVENT=2 для всех отфильтрованных атрибутов всех классов"""
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        filters = _parse_filters_from_json(payload)
+        result = data_service.update_attributes_event_by_filters(
+            page=1,
+            per_page=100000,
+            search=filters['search'],
+            status_variance=filters['status_variance'],
+            event=filters['event'],
+            a_priznak=filters['a_priznak'],
+            base_url=filters['base_url'],
+            source_base_url=filters['source_base_url'],
+            exception_action_filter=filters['exception_action_filter'],
+            analyze_exceptions=filters['analyze_exceptions'],
+            source_target_filter=filters['source_target_filter'],
+            property_filter=filters['property_filter'],
+            show_update_actions=filters['show_update_actions']
+        )
+        if 'error' in result:
+            return jsonify(result), 400
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": f"Ошибка массового обновления по фильтрам: {e}"}), 500
 def _extract_id_from_source_value(source_value):
     """Извлекает ID из строки типа '11008462@SXAttrGrpSource'"""
     try:

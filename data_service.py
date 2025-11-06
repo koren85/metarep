@@ -3330,3 +3330,194 @@ class DataService:
             return {"error": f"Ошибка обновления действий: {e}"}
         finally:
             self.db_manager.disconnect()
+
+    # ===== Новые операции обновления A_EVENT для SXATTR_SOURCE =====
+    def update_attribute_event_by_ouid(self, attr_ouid: int, a_event: int = 2) -> Dict[str, Any]:
+        """Устанавливает A_EVENT=2 для одного атрибута по его OUID"""
+        try:
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+
+            with self.db_manager.transaction():
+                update_sql = """
+                    UPDATE SXATTR_SOURCE
+                    SET a_event = ?
+                    WHERE ouid = ?
+                """
+                prep = self.db_manager.connection.prepareStatement(update_sql)
+                prep.setInt(1, int(a_event))
+                prep.setInt(2, int(attr_ouid))
+                updated = prep.executeUpdate()
+                prep.close()
+
+            return {"success": True, "updated": int(updated)}
+        except Exception as e:
+            return {"error": f"Ошибка обновления атрибута {attr_ouid}: {e}"}
+        finally:
+            self.db_manager.disconnect()
+
+    def _collect_attribute_ouids_from_result(self, result: Dict[str, Any]) -> List[int]:
+        """Вспомогательная: собирает все OUID атрибутов из результата get_attributes()"""
+        ouids: List[int] = []
+        try:
+            # Полный режим с анализом исключений (группировка по классам)
+            if result.get('classes'):
+                for _class_name, class_data in result['classes'].items():
+                    attributes = class_data.get('attributes', {})
+                    for list_name in ('update_list', 'ignore_list', 'no_action_list'):
+                        for attr in attributes.get(list_name, []) or []:
+                            try:
+                                ouid = int(attr.get('ouid'))
+                                ouids.append(ouid)
+                            except Exception:
+                                continue
+            # Быстрый режим
+            elif result.get('attributes', {}).get('fast_mode'):
+                for attr in result['attributes']['fast_mode']:
+                    try:
+                        ouids.append(int(attr.get('ouid')))
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        # Уникализируем порядок сохранения
+        return list(dict.fromkeys(ouids))
+
+    def update_attributes_event_by_class(self,
+                                         class_ouid: int,
+                                         page: int = 1,
+                                         per_page: int = 100000,
+                                         search: str = None,
+                                         status_variance: Optional[int] = None,
+                                         event: Optional[int] = None,
+                                         a_priznak: Optional[int] = None,
+                                         base_url: str = None,
+                                         source_base_url: str = None,
+                                         exception_action_filter: Optional[int] = None,
+                                         analyze_exceptions: bool = False,
+                                         source_target_filter: Optional[str] = None,
+                                         property_filter: Optional[List[str]] = None,
+                                         show_update_actions: bool = True) -> Dict[str, Any]:
+        """Устанавливает A_EVENT=2 для ВСЕХ отфильтрованных атрибутов указанного класса"""
+        try:
+            # Получаем все отфильтрованные атрибуты (без ограничений страницы)
+            result = self.get_attributes(
+                page=1,
+                per_page=int(per_page),
+                search=search,
+                status_variance=status_variance,
+                event=event,
+                a_priznak=a_priznak,
+                base_url=base_url,
+                source_base_url=source_base_url,
+                exception_action_filter=exception_action_filter,
+                analyze_exceptions=analyze_exceptions,
+                source_target_filter=source_target_filter,
+                property_filter=property_filter,
+                show_update_actions=show_update_actions
+            )
+
+            if 'error' in result:
+                return {"error": result['error']}
+
+            # Собираем OUID только нужного класса
+            ouids: List[int] = []
+            if result.get('classes'):
+                for _class_name, class_data in result['classes'].items():
+                    if int(class_data.get('class_ouid')) != int(class_ouid):
+                        continue
+                    for list_name in ('update_list', 'ignore_list', 'no_action_list'):
+                        for attr in class_data.get('attributes', {}).get(list_name, []) or []:
+                            try:
+                                ouids.append(int(attr.get('ouid')))
+                            except Exception:
+                                continue
+            elif result.get('attributes', {}).get('fast_mode'):
+                for attr in result['attributes']['fast_mode']:
+                    try:
+                        if int(attr.get('ouidsxclass')) == int(class_ouid):
+                            ouids.append(int(attr.get('ouid')))
+                    except Exception:
+                        continue
+
+            # Убираем дубликаты
+            ouids = list(dict.fromkeys(ouids))
+
+            if not ouids:
+                return {"success": True, "updated": 0, "message": "Нет атрибутов для обновления"}
+
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+
+            total_updated = 0
+            chunk_size = 900  # безопасный размер для IN
+            with self.db_manager.transaction():
+                for i in range(0, len(ouids), chunk_size):
+                    chunk = ouids[i:i+chunk_size]
+                    # Формируем список чисел безопасно
+                    chunk_str = ",".join(str(int(x)) for x in chunk)
+                    update_sql = f"UPDATE SXATTR_SOURCE SET a_event = 2 WHERE ouid IN ({chunk_str})"
+                    total_updated += int(self.db_manager.execute_update(update_sql))
+
+            return {"success": True, "updated": total_updated, "count": len(ouids)}
+        except Exception as e:
+            return {"error": f"Ошибка массового обновления по классу {class_ouid}: {e}"}
+        finally:
+            self.db_manager.disconnect()
+
+    def update_attributes_event_by_filters(self,
+                                           page: int = 1,
+                                           per_page: int = 100000,
+                                           search: str = None,
+                                           status_variance: Optional[int] = None,
+                                           event: Optional[int] = None,
+                                           a_priznak: Optional[int] = None,
+                                           base_url: str = None,
+                                           source_base_url: str = None,
+                                           exception_action_filter: Optional[int] = None,
+                                           analyze_exceptions: bool = False,
+                                           source_target_filter: Optional[str] = None,
+                                           property_filter: Optional[List[str]] = None,
+                                           show_update_actions: bool = True) -> Dict[str, Any]:
+        """Устанавливает A_EVENT=2 для ВСЕХ атрибутов, попавших под текущие фильтры"""
+        try:
+            result = self.get_attributes(
+                page=1,
+                per_page=int(per_page),
+                search=search,
+                status_variance=status_variance,
+                event=event,
+                a_priznak=a_priznak,
+                base_url=base_url,
+                source_base_url=source_base_url,
+                exception_action_filter=exception_action_filter,
+                analyze_exceptions=analyze_exceptions,
+                source_target_filter=source_target_filter,
+                property_filter=property_filter,
+                show_update_actions=show_update_actions
+            )
+
+            if 'error' in result:
+                return {"error": result['error']}
+
+            ouids = self._collect_attribute_ouids_from_result(result)
+            if not ouids:
+                return {"success": True, "updated": 0, "message": "Нет атрибутов для обновления"}
+
+            if not self.db_manager.connect():
+                return {"error": "Ошибка подключения к БД"}
+
+            total_updated = 0
+            chunk_size = 900
+            with self.db_manager.transaction():
+                for i in range(0, len(ouids), chunk_size):
+                    chunk = ouids[i:i+chunk_size]
+                    chunk_str = ",".join(str(int(x)) for x in chunk)
+                    update_sql = f"UPDATE SXATTR_SOURCE SET a_event = 2 WHERE ouid IN ({chunk_str})"
+                    total_updated += int(self.db_manager.execute_update(update_sql))
+
+            return {"success": True, "updated": total_updated, "count": len(ouids)}
+        except Exception as e:
+            return {"error": f"Ошибка массового обновления по фильтрам: {e}"}
+        finally:
+            self.db_manager.disconnect()
